@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+<title>Flop</title>
+<script>
+$JAVASCRIPT
+</script>
+$RESOURCES
+<style>
+#canvas {
+	position:absolute;
+	top:0;
+	left:0;
+	right:0;
+	bottom:0;
+
+	margin:auto;
+}
+/* #game surrounds the play area, and has a :before element to set the aspect ratio as a function of width; the canvas will try to get as big as it can, respecting #game's size, padding, and any aspect ratio limits. */
+#game {
+	position:relative;
+	padding:0px 0px;
+	background:#333;
+}
+#game:before {
+	content:"";
+	display:block;
+	padding-top:50%; /* use this to set the height of the game div */
+}
+body {
+	background:#222;
+	color:#555;
+	text-align:center;
+}
+a {
+	color:#666;
+}
+</style>
+</head>
+<body onload="engine.core.init(function() { engine.CurrentScene = new game.Main() });">
+<div id="game">
+	<canvas id="canvas"></canvas>
+</div>
+<p>
+(Copyright 2014 TCHOW llc)
+</p>
+</body>
+</html>
