@@ -139,6 +139,7 @@ function Main() {
 
 	this.mouseTile = {x:-2, y:-2};
 	this.mouseDown = false;
+	this.editTile = TileEmpty;
 
 	return this;
 }
@@ -192,16 +193,34 @@ Main.prototype.mouse = function(x, y, isDown) {
 		x: Math.floor((x * 2.0 / engine.Size.x - 1.0) / this.scale.x + Size.x * 0.5),
 		y: Math.floor((y * 2.0 / engine.Size.y - 1.0) / this.scale.y + Size.y * 0.5)};
 	if (isDown) {
-		if (!this.mouseDown) {
-			this.mouseDown = true;
-			if (this.mouseTile.x >= 0 && this.mouseTile.x < Size.x
-			 && this.mouseTile.y >= 0 && this.mouseTile.y < Size.y) {
-				this.board[this.mouseTile.y * Size.x + this.mouseTile.x] = TileEmpty;
+		if (this.mouseTile.x >= 0 && this.mouseTile.x < Size.x
+		 && this.mouseTile.y >= 0 && this.mouseTile.y < Size.y) {
+		 	var i = this.mouseTile.y * Size.x + this.mouseTile.x;
+			if (this.board[i] !== this.editTile) {
+				this.board[i] = this.editTile;
 				this.setBoard(this.board);
 			}
 		}
 	} else {
 		this.mouseDown = false;
+	}
+};
+
+Main.prototype.keydown = function(e) {
+	//console.log(e.keyIdentifier);
+	var id = e.keyIdentifier;
+	if (id === 'U+0051') {
+		this.editTile = TileTL;
+	} else if (id === 'U+0057') {
+		this.editTile = TileTR;
+	} else if (id === 'U+0045') {
+		this.editTile = TileSolid;
+	} else if (id === 'U+0041') {
+		this.editTile = TileBL;
+	} else if (id === 'U+0053') {
+		this.editTile = TileBR;
+	} else if (id === 'U+0044') {
+		this.editTile = TileEmpty;
 	}
 };
 
