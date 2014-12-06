@@ -41,23 +41,33 @@ Main.prototype.resize = function() {
 
 Main.prototype.draw = function() {
 	gl.clearColor(0.2, 0.6, 0.2, 1.0);
-	gl.clear(gl.COLOR_BUFFER_BIT);
+	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+	gl.disable(gl.DEPTH_TEST);
+	gl.disable(gl.BLEND);
+
 	var s = shaders.tile;
-	var size = {x:40, y:20};
-	gl.uniformMatrix4fv(s.uMVP.location, false, new Mat4([
-		2.0 / size.x, 0.0, 0.0, 0.0,
-		0.0, 2.0 / size.y, 0.0, 0.0,
+	gl.useProgram(s);
+
+	var size = {x:42, y:20};
+	var aspect = engine.Size.x / engine.Size.y;
+	var scale = 2.0 * aspect / (size.x + 2);
+	if (scale * (size.y + 2) > 2.0) {
+		scale = 2.0 / (size.y + 2);
+	}
+	gl.uniformMatrix4fv(s.uMVP.location, false, new Mat4(
+		scale / aspect, 0.0, 0.0, 0.0,
+		0.0, scale, 0.0, 0.0,
 		0.0, 0.0, 1.0, 0.0,
-		-1.0, -1.0, 0.0, 1.0
-	]));
+		-scale / aspect * (size.x * 0.5), -scale * (size.y * 0.5), 0.0, 1.0
+	));
 	gl.uniform4f(s.uColor0.location, 1.0, 0.5, 0.5, 1.0);
 	gl.uniform4f(s.uColor1.location, 0.7, 1.0, 0.25, 1.0);
 
 	var mt = new engine.MersenneTwister(0x62344722);
 
 	var data3 = [];
-	for (var y = 0; y < size.x; ++y) {
-		for (var x = 0; x < size.y; ++x) {
+	for (var y = 0; y < size.y; ++y) {
+		for (var x = 0; x < size.x; ++x) {
 			var t = mt.real();
 			data3.push(x, y, t);
 			data3.push(x + 1, y, t);
@@ -77,7 +87,7 @@ Main.prototype.draw = function() {
 	gl.bufferData(gl.ARRAY_BUFFER, data3, gl.STREAM_DRAW);
 	gl.vertexAttribPointer(s.aData.location, 3, gl.FLOAT, false, 0, 0);
 	gl.enableVertexAttribArray(s.aData.location);
-	gl.drawArrays(gl.TRIANGLE_STRIP, 0, data3.length / 3);
+	gl.drawArrays(gl.TRIANGLES, 0, data3.length / 3);
 	gl.disableVertexAttribArray(s.aData.location);
 	gl.deleteBuffer(buffer);
 	delete buffer;
