@@ -481,7 +481,7 @@ function sweptCircleVsHull(sweep, hull) {
 	return isect;
 }
 
-Main.prototype.sweepVsBoard = function(sweep) {
+Main.prototype.sweepVsBoard = function(sweep, ignore) {
 	var minx = 0;
 	var maxx = Size.x - 1;
 	var miny = 0;
@@ -491,6 +491,7 @@ Main.prototype.sweepVsBoard = function(sweep) {
 		for (var x = minx; x <= maxx; ++x) {
 			var t = this.board[y * Size.x + x];
 			if (t.hull.length === 0) continue;
+			if (ignore && (y * Size.y + x) in ignore) continue;
 			var xfSweep = {
 				a:{x:sweep.a.x - x, y:sweep.a.y - y},
 				b:{x:sweep.b.x - x, y:sweep.b.y - y},
@@ -499,6 +500,7 @@ Main.prototype.sweepVsBoard = function(sweep) {
 			var test = sweptCircleVsHull(xfSweep, t.hull);
 			if (test && (!isect || test.t < isect.t)) {
 				isect = test;
+				isect.idx = y * Size.y + x;
 			}
 		}
 	}
@@ -522,6 +524,55 @@ Main.prototype.groundCheckCapsules = function() {
 	}
 	];
 }
+
+Main.prototype.resolveMotion = function(pos, vel, elapsed, path) {
+	var remain = elapsed;
+	var iter = 0;
+
+	var ignore = {};
+
+	if (path) {
+		path.push({x:pos.x, y:pos.y});
+	}
+
+	while (remain > 0.0 && iter < 10) {
+		var sweep = {
+			a:{x:pos.x, y:pos.y},
+			b:{x:pos.x+vel.x * remain, y:pos.y+vel.y * remain},
+			r:PlayerRadius
+		};
+		var isect = this.sweepVsBoard(sweep, ignore);
+		if (isect) {
+			if (isect.t > 0.0) ignore = {};
+
+			ignore[isect.idx] = true;
+
+			pos.x += vel.x * remain * isect.t;
+			pos.y += vel.y * remain * isect.t;
+			var dot = vel.x * isect.ox + vel.y * isect.oy;
+			vel.x -= dot * isect.ox;
+			vel.y -= dot * isect.oy;
+
+			remain *= 1.0 - isect.t;
+		} else {
+			pos.x += vel.x * remain;
+			pos.y += vel.y * remain;
+			remain = 0.0;
+		}
+
+		if (path) {
+			path.push({x:pos.x, y:pos.y});
+		}
+
+		//drawCapsule(sweep);
+		++iter;
+	}
+
+	if (remain > 0.0) {
+		console.log(remain);
+	}
+
+};
 
 Main.prototype.update = function(elapsed) {
 	this.t += elapsed / 0.6;
@@ -557,41 +608,7 @@ Main.prototype.update = function(elapsed) {
 
 	//(b) check player motion against level, arrest any velocity into level
 	(function movePlayer(){
-
-		var pos = player.pos;
-		var vel = player.vel;
-
-		var remain = elapsed;
-		var iter = 0;
-
-		while (remain > 0.0 && iter < 10) {
-			var sweep = {
-				a:{x:pos.x, y:pos.y},
-				b:{x:pos.x+vel.x * remain, y:pos.y+vel.y * remain},
-				r:PlayerRadius
-			};
-			var isect = this.sweepVsBoard(sweep);
-			if (isect) {
-				pos.x += vel.x * remain * isect.t;
-				pos.y += vel.y * remain * isect.t;
-				var dot = vel.x * isect.ox + vel.y * isect.oy;
-				vel.x -= dot * isect.ox;
-				vel.y -= dot * isect.oy;
-
-				remain *= 1.0 - isect.t;
-			} else {
-				pos.x += vel.x * remain;
-				pos.y += vel.y * remain;
-				remain = 0.0;
-			}
-
-			//drawCapsule(sweep);
-			++iter;
-		}
-
-		if (remain > 0.0) {
-			console.log(remain);
-		}
+		this.resolveMotion(player.pos, player.vel, elapsed);
 	}).call(this);
 
 
@@ -810,51 +827,21 @@ Main.prototype.draw = function() {
 	}).call(this);
 
 
-	/*(function testLevelCollision() {
-
+/*
+	(function testLevelCollision() {
 		var pos = {x:this.testRay.a.x, y:this.testRay.a.y};
 		var vel = {x:this.testRay.b.x - this.testRay.a.x, y:this.testRay.b.y - this.testRay.a.y};
 
-		var remain = 1.0;
-		var iter = 0;
-
-		while (remain > 0.0 && iter < 10) {
+		var path = [];
+		this.resolveMotion(pos, vel, 1.0, path);
+		for (var i = 0; i + 1 < path.length; ++i) {
 			var sweep = {
-				a:{x:pos.x, y:pos.y},
-				b:{x:pos.x+vel.x * remain, y:pos.y+vel.y * remain},
-				r:PlayerRadius
+				a:path[i], b:path[i+1], r:PlayerRadius
 			};
-			var isect = this.sweepVsBoard(sweep);
-			if (isect) {
-				if (isect.t > 1.0) {
-					console.log(isect);
-				}
-				pos.x += vel.x * remain * isect.t;
-				pos.y += vel.y * remain * isect.t;
-				var dot = vel.x * isect.ox + vel.y * isect.oy;
-				vel.x -= dot * isect.ox;
-				vel.y -= dot * isect.oy;
-
-				sweep.b.x = pos.x;
-				sweep.b.y = pos.y;
-
-				remain *= 1.0 - isect.t;
-			} else {
-				pos.x += vel.x * remain;
-				pos.y += vel.y * remain;
-				remain = 0.0;
-			}
-
 			drawCapsule(sweep);
-			++iter;
 		}
-
-		if (remain > 0.0) {
-			console.log(remain);
-		}
-
 	}).call(this);
-	*/
+*/
 
 /*
 	(function testHullCollision() {
