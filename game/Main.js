@@ -8,7 +8,7 @@ function assert(cond) {
 }
 
 var Gravity = 5.0;
-var MaxVel = 5.0;
+var MaxVel = 10.0;
 
 var Size = {x:32, y:15};
 var Triangles = Size.x * Size.y * 2;
@@ -342,6 +342,9 @@ function rayVsCircle(ray, circle) {
 	var t = Infinity;
 	if (c <= 0.0) {
 		//ray starts inside circle
+		//check if ray is leaving...
+		var dot = b_a.x * a_c.x + b_a.y * a_c.y;
+		if (dot > 0.0) return null;
 		var lenSq = a_c.x * a_c.x + a_c.y * a_c.y;
 		if (lenSq <= 0.001 * 0.001) {
 			return {t:0.0, ox:1.0, oy:0.0};
@@ -439,7 +442,10 @@ function rayVsCapsule(ray, capsule) {
 		var t = Infinity;
 		if (Math.abs(raPerp) <= capsule.r) {
 			//isect right at start!
-			t = 0.0;
+			//make sure ray is actually going in:
+			if ((raPerp > 0.0 && rbPerp < raPerp) || (raPerp < 0.0 && rbPerp > raPerp)) {
+				t = 0.0;
+			}
 		} else if (raPerp > capsule.r && rbPerp < capsule.r) {
 			t = (capsule.r - raPerp) / (rbPerp - raPerp);
 		} else if (raPerp <-capsule.r && rbPerp >-capsule.r) {
@@ -467,7 +473,7 @@ function sweptCircleVsHull(sweep, hull) {
 	var p = hull.length - 1;
 	for (var i = 0; i < hull.length; ++i) {
 		var test = rayVsCapsule({a:sweep.a, b:sweep.b}, {a:hull[p], b:hull[i], r:sweep.r});
-		if (test && (!isect || isect.t > test.t)) {
+		if (test && (!isect || test.t < isect.t)) {
 			isect = test;
 		}
 		p = i;
@@ -525,30 +531,54 @@ Main.prototype.update = function(elapsed) {
 	if (isect) {
 		//on the ground!
 		player.vel.x += (wantVel - player.vel.x) * (1.0 - Math.pow(0.5, elapsed / 0.05));
+		if (player.jump) {
+			player.vel.y += 5.0;
+			player.jump = false;
+		}
 	} else {
 		//not on the ground!
-		//player.vel.x += (wantVel - player.vel.x) * (1.0 - Math.pow(0.5, elapsed / 10.0));
+		player.vel.x += (wantVel - player.vel.x) * (1.0 - Math.pow(0.5, elapsed / 0.05));
 	}
 
 
 	//(b) check player motion against level, arrest any velocity into level
-	var sweep = {
-		a:{x:player.pos.x, y:player.pos.y},
-		b:{x:player.pos.x + player.vel.x * elapsed, y:player.pos.y + player.vel.y * elapsed},
-		r:PlayerRadius
-	};
-	var isect = this.sweepVsBoard(sweep);
+	(function movePlayer(){
 
-	if (isect) {
-		var dot = isect.ox * player.vel.x + isect.oy * player.vel.y;
-		player.vel.x -= isect.ox * dot;
-		player.vel.y -= isect.oy * dot;
-		player.pos.x += player.vel.x * elapsed;
-		player.pos.y += player.vel.y * elapsed;
-	} else {
-		player.pos.x = sweep.b.x;
-		player.pos.y = sweep.b.y;
-	}
+		var pos = player.pos;
+		var vel = player.vel;
+
+		var remain = elapsed;
+		var iter = 0;
+
+		while (remain > 0.0 && iter < 10) {
+			var sweep = {
+				a:{x:pos.x, y:pos.y},
+				b:{x:pos.x+vel.x * remain, y:pos.y+vel.y * remain},
+				r:PlayerRadius
+			};
+			var isect = this.sweepVsBoard(sweep);
+			if (isect) {
+				pos.x += vel.x * remain * isect.t;
+				pos.y += vel.y * remain * isect.t;
+				var dot = vel.x * isect.ox + vel.y * isect.oy;
+				vel.x -= dot * isect.ox;
+				vel.y -= dot * isect.oy;
+
+				remain *= 1.0 - isect.t;
+			} else {
+				pos.x += vel.x * remain;
+				pos.y += vel.y * remain;
+				remain = 0.0;
+			}
+
+			//drawCapsule(sweep);
+			++iter;
+		}
+
+		if (remain > 0.0) {
+			console.log(remain);
+		}
+	}).call(this);
 
 
 
@@ -768,7 +798,55 @@ Main.prototype.draw = function() {
 	}).call(this);
 
 
-	(function testRayVsCapsule() {
+	/*(function testLevelCollision() {
+
+		var pos = {x:this.testRay.a.x, y:this.testRay.a.y};
+		var vel = {x:this.testRay.b.x - this.testRay.a.x, y:this.testRay.b.y - this.testRay.a.y};
+
+		var remain = 1.0;
+		var iter = 0;
+
+		while (remain > 0.0 && iter < 10) {
+			var sweep = {
+				a:{x:pos.x, y:pos.y},
+				b:{x:pos.x+vel.x * remain, y:pos.y+vel.y * remain},
+				r:PlayerRadius
+			};
+			var isect = this.sweepVsBoard(sweep);
+			if (isect) {
+				if (isect.t > 1.0) {
+					console.log(isect);
+				}
+				pos.x += vel.x * remain * isect.t;
+				pos.y += vel.y * remain * isect.t;
+				var dot = vel.x * isect.ox + vel.y * isect.oy;
+				vel.x -= dot * isect.ox;
+				vel.y -= dot * isect.oy;
+
+				sweep.b.x = pos.x;
+				sweep.b.y = pos.y;
+
+				remain *= 1.0 - isect.t;
+			} else {
+				pos.x += vel.x * remain;
+				pos.y += vel.y * remain;
+				remain = 0.0;
+			}
+
+			drawCapsule(sweep);
+			++iter;
+		}
+
+		if (remain > 0.0) {
+			console.log(remain);
+		}
+
+	}).call(this);
+	*/
+
+/*
+	(function testHullCollision() {
+
 		//drawCapsule(this.testCapsule);
 		//var isect = rayVsCapsule(this.testRay, this.testCapsule);
 		//var testCircle = {x:this.testCapsule.b.x, y:this.testCapsule.b.y, r:this.testCapsule.r};
@@ -787,21 +865,13 @@ Main.prototype.draw = function() {
 				y:isect.t * (this.testRay.b.y - this.testRay.a.y) + this.testRay.a.y
 			};
 			drawCapsule({a:this.testRay.a, b:pt, r:0.75});
-			/*
-			verts2.push(this.testRay.a.x, this.testRay.a.y);
-			verts2.push(pt.x, pt.y);
-			verts2.push(pt.x, pt.y);
-			verts2.push(pt.x + isect.ox, pt.y + isect.oy);
-			*/
 		} else {
 			drawCapsule({a:this.testRay.a, b:this.testRay.b, r:0.75});
-			/*
-			verts2.push(this.testRay.a.x, this.testRay.a.y);
-			verts2.push(this.testRay.b.x, this.testRay.b.y);
-			*/
 		}
 
 	}).call(this);
+*/
+
 
 	var s = shaders.debug;
 	gl.useProgram(s);
