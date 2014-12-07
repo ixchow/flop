@@ -511,17 +511,14 @@ var LogCount = 0;
 
 Main.prototype.groundCheckCapsules = function() {
 	var pos = this.player.pos;
+	var down = this.player.down;
+	var amt = 0.1;
 	return [
-	{
-		a:{x:pos.x - 0.45 * PlayerRadius, y:pos.y},
-		b:{x:pos.x - 0.45 * PlayerRadius, y:pos.y - PlayerRadius},
-		r:0.4 * PlayerRadius
-	},
-	{
-		a:{x:pos.x + 0.45 * PlayerRadius, y:pos.y},
-		b:{x:pos.x + 0.45 * PlayerRadius, y:pos.y - PlayerRadius},
-		r:0.4 * PlayerRadius
-	}
+		{
+			a:{x:pos.x, y:pos.y},
+			b:{x:pos.x + amt * down.x, y:pos.y + amt * down.y},
+			r:PlayerRadius
+		}
 	];
 }
 
@@ -582,9 +579,28 @@ Main.prototype.update = function(elapsed) {
 
 
 	//(a) Are we on the ground? because if so we should modify motion.
-	var onGround = this.groundCheckCapsules().some(function(c){
-		return this.sweepVsBoard(c) !== null;
-	}, this);
+	var nearby = {};
+	var toCheck = this.groundCheckCapsules();
+	while (1) {
+		var added = false;
+		toCheck.forEach(function(c){
+			var isect = this.sweepVsBoard(c, nearby);
+			if (isect) {
+				nearby[isect.idx] = isect;
+				added = true;
+			}
+		}, this);
+		if (!added) break;
+	}
+
+	var onGround = false;
+	for (var idx in nearby) {
+		var isect = nearby[idx];
+		var dot = isect.ox * player.down.x + isect.oy * player.down.y;
+		if (dot < -0.5) {
+			onGround = true;
+		}
+	}
 	
 	var wantVel = 0.0;
 	if (player.goLeft && !player.goRight) {
@@ -602,7 +618,7 @@ Main.prototype.update = function(elapsed) {
 		}
 	} else {
 		//not on the ground!
-		player.vel.x += (wantVel - player.vel.x) * (1.0 - Math.pow(0.5, elapsed / 0.05));
+		//player.vel.x += (wantVel - player.vel.x) * (1.0 - Math.pow(0.5, elapsed / 0.05));
 	}
 
 
