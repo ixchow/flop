@@ -19,6 +19,7 @@ var Triangles = Size.x * Size.y * 2;
 var TexSize = 64;
 
 var PlayerRadius = 0.4;
+var PlayerColor = 0xff552277;
 
 var SwitchRadius = 0.3;
 
@@ -226,6 +227,7 @@ function Main() {
 			armed:false,
 			launch:0.0, //counts down during launch
 		},
+		facing:0.0,
 		goLeft:false,
 		goRight:false,
 		goDown:false,
@@ -860,6 +862,9 @@ Main.prototype.update = function(elapsed) {
 		}
 	}
 
+	//Don't update further during transitions
+	if (this.t < 1.0) return;
+
 	//---------------------------------------
 	//Player:
 	var player = this.player;
@@ -953,9 +958,19 @@ Main.prototype.update = function(elapsed) {
 	var leftRight = (player.goRight ? 1.0 : 0.0) + (player.goLeft ?-1.0 : 0.0);
 	var wantVel = 3.0 * leftRight;
 	if (onGround) {
+		if (wantVel < 0.0) {
+			this.player.facing -= elapsed / 0.2;
+			if (this.player.facing <-1.0) this.player.facing =-1.0;
+		} else if (wantVel > 0.0) {
+			this.player.facing += elapsed / 0.2;
+			if (this.player.facing > 1.0) this.player.facing = 1.0;
+		} else {
+			this.player.facing *= Math.pow(0.5, elapsed / 0.5);
+		}
+
 		//on the ground!
 		var wantDir = {x:1.0, y:0.0};
-		if (wantVel < 0.0 && leftRamp) {
+		if (wantVel <= 0.0 && leftRamp) {
 			wantDir = {x:Sqrt2_2, y:-Sqrt2_2};
 		}
 		if (wantVel >= 0.0 && rightRamp) {
@@ -1275,6 +1290,72 @@ Main.prototype.draw = function() {
 
 	}).call(this);
 
+	//draw player:
+	(function(){
+		var s = shaders.debug;
+		gl.useProgram(s);
+		gl.uniformMatrix4fv(s.uMVP.location, false, MVP);
+
+		var verts2 = [];
+		var colors = [];
+
+		function circle(cx,cy,rx,ry,col) {
+			if (!circle.data) {
+				circle.data = [];
+				for (var a = 0; a < 16; ++a) {
+					var ang = (a + 0.5) / 16 * Math.PI;
+					circle.data.push(Math.cos(ang), Math.sin(ang));
+				}
+			}
+			for (var i = 0; i + 1 < circle.data.length; i += 2) {
+				var x = circle.data[i] * rx + cx;
+				var yt = circle.data[i+1] * ry + cy;
+				var yb = circle.data[i+1] *-ry + cy;
+				if (i == 0) {
+					verts2.push(x,yt); colors.push(col);
+				}
+				verts2.push(x,yt); colors.push(col);
+				verts2.push(x,yb); colors.push(col);
+				if (i + 2 == circle.data.length) {
+					verts2.push(x,yb); colors.push(col);
+				}
+			}
+		}
+
+		circle(this.player.pos.x, this.player.pos.y, PlayerRadius, PlayerRadius, PlayerColor);
+
+		var ang = this.player.facing * Math.PI * 0.2;
+		var EyeRadius = 0.2 * PlayerRadius;
+		var ep = [PlayerRadius * Math.sin(ang + 0.35), PlayerRadius * Math.sin(ang - 0.35)];
+		circle(this.player.pos.x + ep[0], this.player.pos.y + 0.05, EyeRadius, 0.8 * EyeRadius, 0xffffffff);
+		circle(this.player.pos.x + ep[1], this.player.pos.y + 0.05, EyeRadius, 0.8 * EyeRadius, 0xffffffff);
+
+		if (verts2.length == 0) return;
+
+		verts2 = new Float32Array(verts2);
+		colors = new Uint32Array(colors);
+		
+		var vertsBuffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, vertsBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, verts2, gl.STREAM_DRAW);
+		gl.vertexAttribPointer(s.aVertex.location, 2, gl.FLOAT, false, 0, 0);
+
+		var colorsBuffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, colorsBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STREAM_DRAW);
+		gl.vertexAttribPointer(s.aColor.location, 4, gl.UNSIGNED_BYTE, true, 0, 0);
+
+		gl.enableVertexAttribArray(s.aVertex.location);
+		gl.enableVertexAttribArray(s.aColor.location);
+		gl.drawArrays(gl.TRIANGLE_STRIP, 0, verts2.length / 2);
+		gl.disableVertexAttribArray(s.aVertex.location);
+		gl.disableVertexAttribArray(s.aColor.location);
+		gl.bindBuffer(gl.ARRAY_BUFFER, null);
+		gl.deleteBuffer(vertsBuffer);
+		gl.deleteBuffer(colorsBuffer);
+
+	}).call(this);
+
 
 	var s = shaders.tile;
 	gl.useProgram(s);
@@ -1470,7 +1551,7 @@ Main.prototype.draw = function() {
 		}
 	}
 
-	//Player:
+	//Player (debug):
 	(function(){
 		var player = this.player;
 		drawCircle({x:player.pos.x, y:player.pos.y, r:PlayerRadius});
@@ -1558,7 +1639,7 @@ Main.prototype.draw = function() {
 	gl.deleteBuffer(vertsBuffer);
 	gl.deleteBuffer(colorsBuffer);
 
-	}).call(this); //end debugDraw
+	}); //.call(this); //end debugDraw
 };
 
 exports = Main;
