@@ -1,6 +1,8 @@
 var Mat4 = engine.Mat4;
 var Vec2 = engine.Vec2;
 
+var Editing = true;
+
 var Overlays = game.Overlays;
 
 function assert(cond) {
@@ -71,7 +73,7 @@ function linkOverlays() {
 
 	Overlays.forEach(function(ov, ovi) {
 		var b = ov.str;
-		ov.idx = ovi;
+		//ov.idx = ovi;
 
 		assert(b.length === (Size.x + 1) * Size.y);
 
@@ -123,6 +125,7 @@ function linkOverlays() {
 }
 
 function Main() {
+
 	var ext = gl.getExtension("OES_texture_float");
 	if (ext === null) {
 		console.log("Sorry, you need floating point textures.");
@@ -379,6 +382,7 @@ Main.prototype.startTransition = function() {
 };
 
 Main.prototype.mouse = function(x, y, isDown) {
+	if (!Editing) return;
 	var worldMouse = {
 		x: (x * 2.0 / engine.Size.x - 1.0) / this.scale.x + Size.x * 0.5,
 		y: (y * 2.0 / engine.Size.y - 1.0) / this.scale.y + Size.y * 0.5
@@ -446,6 +450,16 @@ Main.prototype.key = function(id, isDown) {
 	setTile('U+0053', TileBR);
 	setTile('U+0044', TileEmpty);
 	setTile('U+005A', TileSwitch);
+
+	if (id === 'Enter' && isDown) {
+		if (Editing) {
+			var text = "exports=" + JSON.stringify(Overlays);
+			var a = document.createElement("a");
+			a.href = "data:application/json," + encodeURIComponent(text);
+			a.download = "Overlays.js";
+			a.click();
+		}
+	}
 };
 
 Main.prototype.enter = function() {
