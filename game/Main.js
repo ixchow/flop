@@ -507,6 +507,22 @@ Main.prototype.sweepVsBoard = function(sweep) {
 
 var LogCount = 0;
 
+Main.prototype.groundCheckCapsules = function() {
+	var pos = this.player.pos;
+	return [
+	{
+		a:{x:pos.x - 0.45 * PlayerRadius, y:pos.y},
+		b:{x:pos.x - 0.45 * PlayerRadius, y:pos.y - PlayerRadius},
+		r:0.4 * PlayerRadius
+	},
+	{
+		a:{x:pos.x + 0.45 * PlayerRadius, y:pos.y},
+		b:{x:pos.x + 0.45 * PlayerRadius, y:pos.y - PlayerRadius},
+		r:0.4 * PlayerRadius
+	}
+	];
+}
+
 Main.prototype.update = function(elapsed) {
 	this.t += elapsed / 0.6;
 	if (this.t > 1.0) this.t = 1.0;
@@ -515,11 +531,9 @@ Main.prototype.update = function(elapsed) {
 
 
 	//(a) Are we on the ground? because if so we should modify motion.
-	var isect = this.sweepVsBoard({
-		a:{x:player.pos.x - 0.5 * PlayerRadius, y:player.pos.y - 0.5 * PlayerHeight},
-		b:{x:player.pos.x + 0.5 * PlayerRadius, y:player.pos.y - 0.5 * PlayerHeight},
-		r:PlayerHeight * 0.5
-	});
+	var onGround = this.groundCheckCapsules().some(function(c){
+		return this.sweepVsBoard(c) !== null;
+	}, this);
 	
 	var wantVel = 0.0;
 	if (player.goLeft && !player.goRight) {
@@ -528,7 +542,7 @@ Main.prototype.update = function(elapsed) {
 	if (player.goRight && !player.goLeft) {
 		wantVel =  2.0;
 	}
-	if (isect) {
+	if (onGround) {
 		//on the ground!
 		player.vel.x += (wantVel - player.vel.x) * (1.0 - Math.pow(0.5, elapsed / 0.05));
 		if (player.jump) {
@@ -789,11 +803,9 @@ Main.prototype.draw = function() {
 	(function(){
 		var player = this.player;
 		drawCircle({x:player.pos.x, y:player.pos.y, r:PlayerRadius});
-		//ground check capsule
-		drawCapsule({
-			a:{x:player.pos.x - 0.5 * PlayerRadius, y:player.pos.y - 0.5 * PlayerHeight},
-			b:{x:player.pos.x + 0.5 * PlayerRadius, y:player.pos.y - 0.5 * PlayerHeight},
-			r:0.5 * PlayerRadius
+		//ground check capsule(s?)
+		this.groundCheckCapsules().forEach(function(c){
+			drawCapsule(c);
 		});
 	}).call(this);
 
