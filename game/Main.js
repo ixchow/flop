@@ -513,15 +513,37 @@ Main.prototype.sweepVsBoard = function(sweep, ignore) {
 
 var LogCount = 0;
 
+var Sqrt2_2 = Math.sqrt(2.0) / 2.0;
+
 Main.prototype.groundCheckCapsules = function() {
 	var pos = this.player.pos;
 	var down = this.player.down;
+	var right = {x:-down.y, y:down.x};
 	var amt = 0.1;
+
+	var d1 = {x:down.x, y:down.y};
+	var d2 = {x:Sqrt2_2 * (down.x + right.x), y:Sqrt2_2 * (down.y + right.y)};
+	var d3 = {x:Sqrt2_2 * (down.x - right.x), y:Sqrt2_2 * (down.y - right.y)};
 	return [
 		{
 			a:{x:pos.x, y:pos.y},
-			b:{x:pos.x + amt * down.x, y:pos.y + amt * down.y},
-			r:PlayerRadius
+			b:{x:pos.x + amt * d1.x, y:pos.y + amt * d1.y},
+			r:PlayerRadius,
+			dir:d1
+		},
+		{
+			a:{x:pos.x, y:pos.y},
+			b:{x:pos.x + amt * d2.x, y:pos.y + amt * d2.y},
+			r:PlayerRadius,
+			dir:d2,
+			rightRamp:true
+		},
+		{
+			a:{x:pos.x, y:pos.y},
+			b:{x:pos.x + amt * d3.x, y:pos.y + amt * d3.y},
+			r:PlayerRadius,
+			dir:d3,
+			leftRamp:true
 		}
 	];
 }
@@ -565,7 +587,6 @@ Main.prototype.resolveMotion = function(pos, vel, elapsed, path) {
 			path.push({x:pos.x, y:pos.y});
 		}
 
-		//drawCapsule(sweep);
 		++iter;
 	}
 
@@ -583,41 +604,42 @@ Main.prototype.update = function(elapsed) {
 
 
 	//(a) Are we on the ground? because if so we should modify motion.
-	var nearby = {};
 	var toCheck = this.groundCheckCapsules();
-	while (1) {
-		var added = false;
-		toCheck.forEach(function(c){
+	var onGround = false;
+	var rightRamp = false;
+	var leftRamp = false;
+	toCheck.forEach(function(c){
+		var nearby = {};
+		while (1) {
 			var isect = this.sweepVsBoard(c, nearby);
 			if (isect) {
+				var dot = c.dir.x * isect.ox + c.dir.y * isect.oy;
+				if (c.rightRamp || c.leftRamp) {
+					if (dot < -0.99) {
+						if (c.rightRamp) rightRamp = true;
+						if (c.leftRamp) leftRamp = true;
+					}
+				} else {
+					if (dot < -0.5) {
+						onGround = true;
+					}
+				}
 				nearby[isect.idx] = isect;
-				added = true;
+			} else {
+				break;
 			}
-		}, this);
-		if (!added) break;
-	}
-
-	var onGround = false;
-	for (var idx in nearby) {
-		var isect = nearby[idx];
-		var dot = isect.ox * player.down.x + isect.oy * player.down.y;
-		if (dot < -0.5) {
-			onGround = true;
 		}
-	}
-	
-	//TODO: should all be relative to player.down
-	var wantVel = 0.0;
-	if (player.goLeft && !player.goRight) {
-		wantVel = -3.0;
-	}
-	if (player.goRight && !player.goLeft) {
-		wantVel =  3.0;
-	}
+	}, this);
+
+	var relVel = {
+		x: -player.down.y * player.vel.x + player.down.x * player.vel.y,
+		y: -player.down.x * player.vel.x +-player.down.y * player.vel.y
+	};
+
 	if (player.jump.launch > 0.0) {
 		if (!player.goUp) {
-			if (player.vel.y > 0.0) {
-				player.vel.y *= 0.5;
+			if (relVel.y > 0.0) {
+				relVel.y *= 0.5;
 			}
 			player.jump.launch = 0.0;
 		}
@@ -626,12 +648,28 @@ Main.prototype.update = function(elapsed) {
 			player.jump.launch = 0.0;
 		}
 	}
+	var leftRight = (player.goRight ? 1.0 : 0.0) + (player.goLeft ?-1.0 : 0.0);
+	var wantVel = 3.0 * leftRight;
 	if (onGround) {
 		//on the ground!
-		player.vel.x += (wantVel - player.vel.x) * (1.0 - Math.pow(0.5, elapsed / 0.05));
+		var wantDir = {x:1.0, y:0.0};
+		if (wantVel < 0.0 && leftRamp) {
+			wantDir = {x:Sqrt2_2, y:-Sqrt2_2};
+		}
+		if (wantVel >= 0.0 && rightRamp) {
+			wantDir = {x:Sqrt2_2, y: Sqrt2_2};
+		}
+		var blend = (1.0 - Math.pow(0.5, elapsed / 0.05));
+
+		var proj = wantDir.x * relVel.x + wantDir.y * relVel.y;
+
+		proj = (wantVel - proj) * blend;
+		relVel.x += wantDir.x * proj;
+		relVel.y += wantDir.y * proj;
+
 		if (player.jump.armed) {
 			if (player.goUp) {
-				player.vel.y = Math.max(player.vel.y, 5.0);
+				relVel.y = Math.max(relVel.y, 5.0);
 				player.jump.armed = false;
 				player.jump.launch = 0.7; //time during which jump can be cancelled?
 			}
@@ -644,23 +682,27 @@ Main.prototype.update = function(elapsed) {
 		}
 	} else {
 		//not on the ground!
-		player.vel.x += Gravity * player.down.x * elapsed;
-		player.vel.y += Gravity * player.down.y * elapsed;
+		relVel.y -= Gravity * elapsed;
 
-		if (wantVel > 0.0 && player.vel.x < wantVel) {
-			player.vel.x += 1.5 * elapsed;
-			if (player.vel.x > wantVel) player.vel.x = wantVel;
+		var AirControl = 2.5;
+
+		if (wantVel > 0.0 && relVel.x < wantVel) {
+			relVel.x += AirControl * elapsed;
+			if (relVel.x > wantVel) relVel.x = wantVel;
 		}
-		if (wantVel < 0.0 && player.vel.x > wantVel) {
-			player.vel.x -= 1.5 * elapsed;
-			if (player.vel.x < wantVel) player.vel.x = wantVel;
+		if (wantVel < 0.0 && relVel.x > wantVel) {
+			relVel.x -= AirControl * elapsed;
+			if (relVel.x < wantVel) relVel.x = wantVel;
 		}
-		if (player.goDown && player.vel.y > -2.0) {
-			player.vel.y -= 1.5 * elapsed;
-			if (player.vel.y < -2.0) player.vel.y = -2.0;
+		if (player.goDown && relVel.y > -2.0) {
+			relVel.y -= 0.5 * AirControl * elapsed;
+			if (relVel.y < -2.0) relVel.y = -2.0;
 		}
 
 	}
+
+	player.vel.x =-player.down.y * relVel.x +-player.down.x * relVel.y;
+	player.vel.y = player.down.x * relVel.x +-player.down.y * relVel.y;
 
 
 	//(b) check player motion against level, arrest any velocity into level
