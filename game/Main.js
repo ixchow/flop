@@ -25,38 +25,39 @@ var SwitchRadius = 0.3;
 var Mid = 1.0 - Math.sqrt(2.0) / 2.0;
 var TileSolid = {
 	char:'#',
-	triangles:[{x:Mid, y:Mid, r:0.0}, {x:1.0-Mid, y:1.0-Mid, r:Math.PI}],
+	//triangles:[{x:Mid, y:Mid, r:0.0}, {x:1.0-Mid, y:1.0-Mid, r:Math.PI}],
+	slots:[true, false, true, false],
 	//counterclockwise convex hull:
 	hull:[{x:0.0, y:0.0}, {x:1.0, y:0.0}, {x:1.0, y:1.0}, {x:0.0, y:1.0}]
 };
 var TileEmpty = {
 	char:' ',
-	triangles:[],
+	slots:[false, false, false, false],
 	hull:[]
 };
 var TileSwitch = {
 	char:'s',
-	triangles:[],
+	slots:[false, false, false, false],
 	hull:[]
 };
 var TileBL = {
 	char:'L',
-	triangles:[{x:Mid, y:Mid, r:0.0}],
+	slots:[true, false, false, false],
 	hull:[{x:0.0, y:0.0}, {x:1.0, y:0.0}, {x:0.0, y:1.0}]
 };
 var TileBR = {
 	char:'J',
-	triangles:[{x:1.0-Mid, y:Mid, r:0.5 * Math.PI}],
+	slots:[false, true, false, false],
 	hull:[{x:0.0, y:0.0}, {x:1.0, y:0.0}, {x:1.0, y:1.0}]
 };
 var TileTR = {
 	char:'\\',
-	triangles:[{x:1.0-Mid, y:1.0-Mid, r:Math.PI}],
+	slots:[false, false, true, false],
 	hull:[{x:1.0, y:0.0}, {x:1.0, y:1.0}, {x:0.0, y:1.0}]
 };
 var TileTL = {
 	char:'/',
-	triangles:[{x:Mid, y:1.0-Mid, r:-0.5 * Math.PI}],
+	slots:[false, false, false, true],
 	hull:[{x:0.0, y:0.0}, {x:1.0, y:1.0}, {x:0.0, y:1.0}]
 };
 
@@ -161,54 +162,45 @@ function Main() {
 
 	//TODO: build tile shadow triangles
 
-	//build transformation textures:
+	//-------------------------------------------
 
-	var pos = new Float32Array(4 * TexSize * TexSize);
-	var rot = new Float32Array(4 * TexSize * TexSize);
-	var i = 0;
-	for (var y = 0; y < Size.y; ++y) {
-		for (var x = 0; x < Size.x; ++x) {
-			pos[i*4+0] = x + Mid;
-			pos[i*4+1] = y + Mid;
-			pos[i*4+2] = x + 1 - Mid;
-			pos[i*4+3] = y + 1 - Mid;
-			rot[i*4+0] = 0.0;
-			rot[i*4+1] = 0.0;
-			rot[i*4+2] = Math.PI;
-			rot[i*4+3] = 0.0;
-			++i;
-			pos[i*4+0] = x + 1 - Mid;
-			pos[i*4+1] = y + 1 - Mid;
-			pos[i*4+2] = x + Mid;
-			pos[i*4+3] = y + Mid;
-			rot[i*4+0] = Math.PI;
-			rot[i*4+1] = 0.0;
-			rot[i*4+2] = 0.0;
-			rot[i*4+3] = 0.0;
-			++i;
-		}
+	this.triSlots = Array(Size.x * Size.y * 2);
+	this.slotTris = Array(Size.x * Size.y * 4); //four slots per tile
+	for (var s = 0; s < this.slotTris.length; ++s) {
+		this.slotTris[s] = [];
+	}
+	for (var t = 0; t < this.triSlots.length; ++t) {
+		this.triSlots[t] = t * 2;
+		this.slotTris[this.triSlots[t]].push(t);
 	}
 
-	this.pos = pos;
+	//build transformation textures:
+
+	this.pos = new Float32Array(4 * TexSize * TexSize);
+	this.rot = new Float32Array(4 * TexSize * TexSize);
+
+	this.pushPosRot();
+	this.pushPosRot();
+
 	this.posTex = gl.createTexture();
 	gl.bindTexture(gl.TEXTURE_2D, this.posTex);
-	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TexSize, TexSize, 0, gl.RGBA, gl.FLOAT, pos);
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TexSize, TexSize, 0, gl.RGBA, gl.FLOAT, this.pos);
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 	gl.bindTexture(gl.TEXTURE_2D, null);
 
-	this.rot = rot;
 	this.rotTex = gl.createTexture();
 	gl.bindTexture(gl.TEXTURE_2D, this.rotTex);
-	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TexSize, TexSize, 0, gl.RGBA, gl.FLOAT, rot);
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TexSize, TexSize, 0, gl.RGBA, gl.FLOAT, this.rot);
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 	gl.bindTexture(gl.TEXTURE_2D, null);
 
+	
 	//-------------------------------------------
 
 
@@ -245,7 +237,7 @@ function Main() {
 	this.switches = {};
 
 	this.path = [Overlays.startPosition.x + "," + Overlays.startPosition.y];
-	this.rebuildFromPath();
+	this.rebuildFromPath(true);
 
 	return this;
 }
@@ -301,7 +293,7 @@ Main.prototype.doOverlay = function(idx) {
 	}
 };
 
-Main.prototype.rebuildFromPath = function() {
+Main.prototype.rebuildFromPath = function(instant) {
 	var path = this.path;
 	this.path = [];
 	//clear board...
@@ -314,38 +306,134 @@ Main.prototype.rebuildFromPath = function() {
 	}, this);
 
 	this.startTransition();
+	if (instant) {
+		this.t = 1.0;
+		for (var idx in this.switches) {
+			var sw = this.switches[idx];
+			if (sw.current) {
+				sw.fade = 1.0;
+			} else {
+				sw.fade = 0.0;
+			}
+		}
+	}
+};
+
+Main.prototype.pushPosRot = function() {
+	//set this.pos and this.rot from this.slotTris
+
+	var pos = this.pos;
+	var rot = this.rot;
+
+	var st = [
+		{x:1.0 - Sqrt2_2, y:1.0 - Sqrt2_2, r:0.0},
+		{x:Sqrt2_2, y:1.0 - Sqrt2_2, r:0.5 * Math.PI},
+		{x:Sqrt2_2, y:Sqrt2_2, r:Math.PI},
+		{x:1.0 - Sqrt2_2, y:Sqrt2_2, r:-0.5 * Math.PI}
+	];
+	var r = engine.MersenneTwister.random;
+	this.slotTris.forEach(function(tris, slot){
+		if (tris.length == 0) return;
+
+		var si = slot % 4;
+		var sx = ((slot / 4) | 0) % Size.x;
+		var sy = (slot / (4 * Size.x)) | 0;
+		tris.forEach(function(t, ti){
+			pos[4*t+0] = pos[4*t+2];
+			pos[4*t+1] = pos[4*t+3];
+			pos[4*t+2] = sx + st[si].x + 0.1 * (r() - 0.5);
+			pos[4*t+3] = sy + st[si].y + 0.1 * (r() - 0.5);
+			rot[4*t+0] = rot[4*t+2];
+			rot[4*t+1] = rot[4*t+3];
+			rot[4*t+2] = st[si].r + 0.2 * (r() - 0.5);
+			rot[4*t+3] = ti;
+		});
+	}, this);
 };
 
 Main.prototype.startTransition = function() {
-	var slots = [];
+	//figure out which slots need to be empty, and add triangles to list:
+	var freeTris = [];
 	for (var y = 0; y < Size.y; ++y) {
 		for (var x = 0; x < Size.x; ++x) {
-			this.board[y * Size.x + x].triangles.forEach(function(t){
-				slots.push({x:t.x + x, y:t.y + y, r:t.r});
-			});
+			var s = this.board[y * Size.x + x].slots;
+			for (var i = 0; i < 4; ++i) {
+				if (!s[i]) {
+					var slot = i + 4 * (x + Size.x * y);
+					freeTris.push.apply(freeTris, this.slotTris[slot]);
+					this.slotTris[slot] = [];
+				}
+			}
 		}
 	}
-	var r = engine.MersenneTwister.random;
-	//shuffle slots:
-	for (var i = 0; i < slots.length; ++i) {
-		var j = (r() * (slots.length - i)) | 0 + i;
-		var temp = slots[i]; slots[i] = slots[j]; slots[j] = temp;
+
+	var countSlots = [ [] ];
+	for (var y = 0; y < Size.y; ++y) {
+		for (var x = 0; x < Size.x; ++x) {
+			var s = this.board[y * Size.x + x].slots;
+			for (var i = 0; i < 4; ++i) {
+				if (s[i]) {
+					var slot = i + 4 * (x + Size.x * y);
+					var count = this.slotTris[slot].length;
+					while (countSlots.length <= count) {
+						countSlots.push([]);
+					}
+					countSlots[count].push(slot);
+				}
+			}
+		}
 	}
 
-	//assign current triangles to new slots:
-	var si = 0;
-	for (var t = 0; t < Triangles; ++t) {
-		var s = slots[si++];
-		if (si >= slots.length) si -= slots.length;
-		this.pos[4*t+0] = this.pos[4*t+2];
-		this.pos[4*t+1] = this.pos[4*t+3];
-		this.pos[4*t+2] = s.x + 0.1 * (r() - 0.5);
-		this.pos[4*t+3] = s.y + 0.1 * (r() - 0.5);
-		this.rot[4*t+0] = this.rot[4*t+2];
-		this.rot[4*t+1] = this.rot[4*t+3];
-		this.rot[4*t+2] = s.r + 0.2 * (r() - 0.5);
-		this.rot[4*t+3] = 0.0;
+	console.log("Have " + freeTris.length + " free triangles.");
+	for (var i = 0; i < countSlots.length; ++i) {
+		console.log(i + ": " + countSlots[i].length);
 	}
+
+
+	function shuffle(arr) {
+		var r = engine.MersenneTwister.random;
+		for (var i = 0; i < arr.length; ++i) {
+			var j = (r() * (arr.length - i)) | 0 + i;
+			var temp = arr[i]; arr[i] = arr[j]; arr[j] = temp;
+		}
+	}
+
+	//allocate free'd triangles to emptiest bins:
+	var count = 0;
+	shuffle(countSlots[0]);
+	freeTris.forEach(function(ti){
+		while (countSlots[count].length == 0) {
+			++count;
+			shuffle(countSlots[count]);
+		}
+		var slot = countSlots[count].pop();
+		if (count + 1 == countSlots.length) {
+			countSlots.push([]);
+		}
+		countSlots[count+1].push(slot);
+
+		this.triSlots[ti] = slot;
+		this.slotTris[slot].push(ti);
+	}, this);
+
+	//allocate tris from fullest bins to empty bins:
+	var count = countSlots.length - 1;
+	while (countSlots[0].length != 0) {
+		while (countSlots[count].length == 0) {
+			--count;
+		}
+		var slot = countSlots[count].pop();
+		var ti = this.slotTris[slot].pop();
+
+		countSlots[count-1].push(slot);
+
+		var targ = countSlots[0].pop();
+
+		this.triSlots[ti] = targ;
+		this.slotTris[targ].push(ti);
+	}
+
+	this.pushPosRot();
 
 	//re-upload textures:
 	gl.bindTexture(gl.TEXTURE_2D, this.posTex);
@@ -406,7 +494,7 @@ Main.prototype.mouse = function(x, y, isDown) {
 				if (overlay.str[i] != this.editTile.char && overlay.str[i] != 'p') {
 					overlay.str = overlay.str.substr(0,i) + this.editTile.char + overlay.str.substr(i+1);
 					var old = {x:this.player.pos.x, y:this.player.pos.y};
-					this.rebuildFromPath();
+					this.rebuildFromPath(true);
 					this.player.pos.x = old.x;
 					this.player.pos.y = old.y;
 				}
@@ -1024,41 +1112,141 @@ Main.prototype.draw = function() {
 			var sw = this.switches[idx];
 			var amt = sw.fade;
 
+			amt = 1.0 - (1.0 - amt) * (1.0 - amt);
+
 			function mix(a,b,t) {
 				return (b - a) * t + a;
 			}
 
-			var left = mix(0.0, sw.x, amt);
-			var right = mix(Size.x, sw.x, amt);
-			var bottom = mix(0.0, sw.y, amt);
-			var top = mix(Size.y, sw.y, amt);
-			var r = mix(0.7, SwitchRadius, amt);
+			var left,right,bottom,top;
+			var rBL,rBR,rTL,rTR;
+			(function(){
+				var maxR = Math.hypot(Size.x, Size.y);
+				var r = mix(maxR, SwitchRadius, amt);
+				rBL = rBR = rTL = rTR = r;
+				var Padding = 0.7;
+				left = Math.max(sw.x - r, -Padding);
+				right = Math.min(sw.x + r, Size.x + Padding);
+				bottom = Math.max(sw.y - r, -Padding);
+				top = Math.min(sw.y + r, Size.y + Padding);
+
+				var rB = sw.y - bottom;
+				var rT = top - sw.y;
+				var rL = sw.x - left;
+				var rR = right - sw.x;
+
+				if (rB < r) {
+					var w = Math.sqrt(r*r-rB*rB);
+					rBL = Math.min(rBL, rL-w);
+					rBR = Math.min(rBR, rR-w);
+				}
+				if (rT < r) {
+					var w = Math.sqrt(r*r-rT*rT);
+					rTL = Math.min(rTL, rL-w);
+					rTR = Math.min(rTR, rR-w);
+				}
+				if (rL < r) {
+					var w = Math.sqrt(r*r-rL*rL);
+					rTL = Math.min(rTL, rT-w);
+					rBL = Math.min(rBL, rB-w);
+				}
+				if (rR < r) {
+					var w = Math.sqrt(r*r-rR*rR);
+					rTR = Math.min(rTR, rT-w);
+					rBR = Math.min(rBR, rB-w);
+				}
+
+				var minR = Math.min(r, 0.5);
+
+				rTR = Math.max(rTR, minR);
+				rTL = Math.max(rTL, minR);
+				rBR = Math.max(rBR, minR);
+				rBL = Math.max(rBL, minR);
+
+			})();
+
 			var col = 0xffff88;
 			var alpha = (255.9 * (amt * amt)) | 0;
 			col |= alpha << 24;
 
-			for (var i = 0; i < corner.length; ++i) {
-				var x = r * corner[i].x;
-				var y = r * corner[i].y;
-				if (i == 0 && verts2.length) {
-					verts2.push(verts2[verts2.length-2], verts2[verts2.length-1]);
-					colors.push(colors[colors.length-1]);
-					verts2.push(left - x, bottom - y);
+			//inside:
+			if (alpha > 0) {
+				for (var i = 0; i < corner.length; ++i) {
+					var xt = left + rTL - rTL * corner[i].x;
+					var yt = top - rTL + rTL * corner[i].y;
+					var xb = left + rBL - rBL * corner[i].x;
+					var yb = bottom + rBL - rBL * corner[i].y;
+					if (i == 0) {
+						verts2.push(xb,yb); colors.push(col);
+					}
+					verts2.push(xb, yb);
+					colors.push(col);
+					verts2.push(xt, yt);
 					colors.push(col);
 				}
-				verts2.push(left - x, bottom - y);
-				colors.push(col);
-				verts2.push(left - x, top + y);
-				colors.push(col);
+				for (var i = corner.length - 1; i >= 0; --i) {
+					var xt = right - rTR + rTR * corner[i].x;
+					var yt = top - rTR + rTR * corner[i].y;
+					var xb = right - rBR + rBR * corner[i].x;
+					var yb = bottom + rBR - rBR * corner[i].y;
+					verts2.push(xb, yb); colors.push(col);
+					verts2.push(xt, yt); colors.push(col);
+					if (i == 0) {
+						verts2.push(xt, yt); colors.push(col);
+					}
+				}
 			}
-			for (var i = corner.length - 1; i >= 0; --i) {
-				var x = r * corner[i].x;
-				var y = r * corner[i].y;
-				verts2.push(right + x, bottom - y);
-				colors.push(col);
-				verts2.push(right + x, top + y);
-				colors.push(col);
+			//border:
+			col = 0x80000000;
+			if (true) {
+				for (var i = 0; i < corner.length; ++i) {
+					var x = left + rBL - rBL * corner[i].x;
+					var y = bottom + rBL - rBL * corner[i].y;
+					var ox = x - 0.1 * corner[i].x;
+					var oy = y - 0.1 * corner[i].y;
+					if (i == 0) {
+						verts2.push(x,y); colors.push(col);
+					}
+					verts2.push(x,y); colors.push(col);
+					verts2.push(ox,oy); colors.push(col);
+				}
+				for (var i = corner.length-1; i >= 0; --i) {
+					var x = right - rBR + rBR * corner[i].x;
+					var y = bottom + rBR - rBR * corner[i].y;
+					var ox = x + 0.1 * corner[i].x;
+					var oy = y - 0.1 * corner[i].y;
+					verts2.push(x,y); colors.push(col);
+					verts2.push(ox,oy); colors.push(col);
+				}
+				for (var i = 0; i < corner.length; ++i) {
+					var x = right - rTR + rTR * corner[i].x;
+					var y = top - rTR + rTR * corner[i].y;
+					var ox = x + 0.1 * corner[i].x;
+					var oy = y + 0.1 * corner[i].y;
+					verts2.push(x,y); colors.push(col);
+					verts2.push(ox,oy); colors.push(col);
+				}
+				for (var i = corner.length-1; i >= 0; --i) {
+					var x = left + rTL - rTL * corner[i].x;
+					var y = top - rTL + rTL * corner[i].y;
+					var ox = x - 0.1 * corner[i].x;
+					var oy = y + 0.1 * corner[i].y;
+					verts2.push(x,y); colors.push(col);
+					verts2.push(ox,oy); colors.push(col);
+				}
+				for (var i = 0; i <= 0; ++i) {
+					var x = left + rBL - rBL * corner[i].x;
+					var y = bottom + rBL - rBL * corner[i].y;
+					var ox = x - 0.1 * corner[i].x;
+					var oy = y - 0.1 * corner[i].y;
+					verts2.push(x,y); colors.push(col);
+					verts2.push(ox,oy); colors.push(col);
+					verts2.push(ox,oy); colors.push(col);
+				}
+
+
 			}
+
 		}
 
 		if (verts2.length == 0) return;
@@ -1126,7 +1314,7 @@ Main.prototype.draw = function() {
 	gl.bindBuffer(gl.ARRAY_BUFFER, this.tileBuffer);
 	gl.vertexAttribPointer(s.aData.location, 4, gl.FLOAT, false, 0, 0);
 	gl.enableVertexAttribArray(s.aData.location);
-	//gl.drawArrays(gl.TRIANGLES, 0, this.tileBuffer.verts);
+	gl.drawArrays(gl.TRIANGLES, 0, this.tileBuffer.verts);
 	gl.disableVertexAttribArray(s.aData.location);
 	gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
