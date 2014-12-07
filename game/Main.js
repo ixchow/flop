@@ -353,7 +353,6 @@ Main.prototype.startTransition = function() {
 	gl.bindTexture(gl.TEXTURE_2D, null);
 
 	//deal with switches:
-	this.switches = {};
 	for (var idx in this.switches) {
 		this.switches[idx].current = false;
 	}
@@ -714,6 +713,30 @@ Main.prototype.resolveMotion = function(pos, vel, elapsed, path) {
 
 };
 
+Main.prototype.triggerSwitch = function(idx) {
+	if (!(idx in Overlays.pToOverlay)) {
+		console.log("adding overlay at " + idx);
+		var s = idx.split(",");
+		var sx = parseInt(s[0]);
+		var sy = parseInt(s[1]);
+		var str = "";
+		for (var y = Size.y - 1; y >= 0; --y) {
+			for (var x = 0; x < Size.x; ++x) {
+				if (sx == x && sy == y) {
+					str += 'p';
+				} else {
+					str += '.';
+				}
+			}
+			str += '\n';
+		}
+		Overlays.push({str:str});
+		linkOverlays();
+	}
+	this.doOverlay(idx);
+	this.startTransition();
+};
+
 Main.prototype.update = function(elapsed) {
 	//---------------------------------------
 	//transition:
@@ -736,7 +759,6 @@ Main.prototype.update = function(elapsed) {
 	//---------------------------------------
 	//Player:
 	var player = this.player;
-
 
 	//(a) Are we on the ground? because if so we should modify motion.
 	var onGround = false;
@@ -886,8 +908,26 @@ Main.prototype.update = function(elapsed) {
 		this.resolveMotion(player.pos, player.vel, elapsed);
 	}).call(this);
 
+	//see if player triggers any switches
+	(function checkSwitch(){
+		for (var idx in this.switches) {
+			var sw = this.switches[idx];
+			if (sw.current && sw.fade == 1.0) {
+				var to = {
+					x:sw.x - this.player.pos.x,
+					y:sw.y - this.player.pos.y
+				};
+				var disSq = to.x * to.x + to.y * to.y;
+				if (disSq < PlayerRadius * PlayerRadius) {
+					//trigger that switch! woaaah!
+					this.triggerSwitch(idx);
+					break;
+				}
+			}
+		}
+	}).call(this);
 
-	//TODO: respawn player if fell off the screen
+	//respawn player if fell off the screen
 	(function checkRespawn(){
 		var dot =-Infinity;
 		[ {x:0.0, y:0.0},
@@ -909,11 +949,7 @@ Main.prototype.update = function(elapsed) {
 		}
 	}).call(this);
 
-	//collision detection
-	var playerTile = {
-		x:player.pos.x | 0,
-		y:player.pos.y | 0
-	};
+
 
 
 	var lenSq = player.vel.x * player.vel.x + player.vel.y * player.vel.y;
