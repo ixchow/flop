@@ -200,10 +200,14 @@ function Main() {
 		rot:0.0,
 		vel:{x:0, y:0},
 		down:{x:0, y:-1},
+		jump:{
+			armed:false,
+			launch:0.0, //counts down during launch
+		},
 		goLeft:false,
 		goRight:false,
-		duck:false,
-		jump:false
+		goDown:false,
+		goUp:false
 	};
 
 	return this;
@@ -296,9 +300,9 @@ Main.prototype.key = function(id, isDown) {
 	} else if (id === 'Right') {
 		this.player.goRight = isDown;
 	} else if (id === 'Up') {
-		this.player.jump = isDown;
+		this.player.goUp = isDown;
 	} else if (id === 'Down') {
-		this.player.duck = isDown;
+		this.player.goDown = isDown;
 	}
 	if (isDown) {
 		if (id === 'U+0051') {
@@ -602,23 +606,60 @@ Main.prototype.update = function(elapsed) {
 		}
 	}
 	
+	//TODO: should all be relative to player.down
 	var wantVel = 0.0;
 	if (player.goLeft && !player.goRight) {
-		wantVel = -2.0;
+		wantVel = -3.0;
 	}
 	if (player.goRight && !player.goLeft) {
-		wantVel =  2.0;
+		wantVel =  3.0;
+	}
+	if (player.jump.launch > 0.0) {
+		if (!player.goUp) {
+			if (player.vel.y > 0.0) {
+				player.vel.y *= 0.5;
+			}
+			player.jump.launch = 0.0;
+		}
+		player.jump.launch -= elapsed;
+		if (player.jump.launch < 0.0) {
+			player.jump.launch = 0.0;
+		}
 	}
 	if (onGround) {
 		//on the ground!
 		player.vel.x += (wantVel - player.vel.x) * (1.0 - Math.pow(0.5, elapsed / 0.05));
-		if (player.jump) {
-			player.vel.y += 5.0;
-			player.jump = false;
+		if (player.jump.armed) {
+			if (player.goUp) {
+				player.vel.y = Math.max(player.vel.y, 5.0);
+				player.jump.armed = false;
+				player.jump.launch = 0.7; //time during which jump can be cancelled?
+			}
+		} else {
+			if (player.jump.launch === 0.0) {
+				if (!player.goUp) {
+					player.jump.armed = true;
+				}
+			}
 		}
 	} else {
 		//not on the ground!
-		//player.vel.x += (wantVel - player.vel.x) * (1.0 - Math.pow(0.5, elapsed / 0.05));
+		player.vel.x += Gravity * player.down.x * elapsed;
+		player.vel.y += Gravity * player.down.y * elapsed;
+
+		if (wantVel > 0.0 && player.vel.x < wantVel) {
+			player.vel.x += 1.5 * elapsed;
+			if (player.vel.x > wantVel) player.vel.x = wantVel;
+		}
+		if (wantVel < 0.0 && player.vel.x > wantVel) {
+			player.vel.x -= 1.5 * elapsed;
+			if (player.vel.x < wantVel) player.vel.x = wantVel;
+		}
+		if (player.goDown && player.vel.y > -2.0) {
+			player.vel.y -= 1.5 * elapsed;
+			if (player.vel.y < -2.0) player.vel.y = -2.0;
+		}
+
 	}
 
 
@@ -635,8 +676,6 @@ Main.prototype.update = function(elapsed) {
 	player.pos.x = Math.min(Size.x, player.pos.x);
 	player.pos.y = Math.min(Size.y, player.pos.y);
 
-	player.vel.x += Gravity * player.down.x * elapsed;
-	player.vel.y += Gravity * player.down.y * elapsed;
 
 	//collision detection
 	var playerTile = {
