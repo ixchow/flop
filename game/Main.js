@@ -17,7 +17,8 @@ var Triangles = Size.x * Size.y * 2;
 var TexSize = 64;
 
 var PlayerRadius = 0.4;
-var PlayerHeight = 0.5;
+
+var SwitchRadius = 0.3;
 
 var Mid = 1.0 - Math.sqrt(2.0) / 2.0;
 var TileSolid = {
@@ -418,7 +419,7 @@ Main.prototype.mouse = function(x, y, isDown) {
 };
 
 Main.prototype.key = function(id, isDown) {
-	console.log(id);
+	//console.log(id);
 	if (id === 'Left') {
 		this.player.goLeft = isDown;
 	} else if (id === 'Right') {
@@ -714,9 +715,26 @@ Main.prototype.resolveMotion = function(pos, vel, elapsed, path) {
 };
 
 Main.prototype.update = function(elapsed) {
+	//---------------------------------------
+	//transition:
 	this.t += elapsed / 0.6;
 	if (this.t > 1.0) this.t = 1.0;
 
+	//---------------------------------------
+	//switches:
+	for (var idx in this.switches) {
+		var sw = this.switches[idx];
+		if (sw.current) {
+			sw.fade += elapsed / 0.6;
+			if (sw.fade > 1.0) sw.fade = 1.0;
+		} else {
+			sw.fade -= elapsed / 0.8;
+			if (sw.fade < 0.0) sw.fade = 0.0;
+		}
+	}
+
+	//---------------------------------------
+	//Player:
 	var player = this.player;
 
 
@@ -869,13 +887,27 @@ Main.prototype.update = function(elapsed) {
 	}).call(this);
 
 
-
-
-	player.pos.x = Math.max(0.0, player.pos.x);
-	player.pos.y = Math.max(0.0, player.pos.y);
-	player.pos.x = Math.min(Size.x, player.pos.x);
-	player.pos.y = Math.min(Size.y, player.pos.y);
-
+	//TODO: respawn player if fell off the screen
+	(function checkRespawn(){
+		var dot =-Infinity;
+		[ {x:0.0, y:0.0},
+			{x:Size.x, y:0.0},
+			{x:Size.x, y:Size.y},
+			{x:0.0, y:Size.y}
+		].forEach(function(pt) {
+			var test = (pt.x - player.pos.x) * player.down.x + (pt.y - player.pos.y) * player.down.y;
+			if (test > dot) dot = test;
+		}, this);
+		var velDot = player.vel.x * player.down.x + player.vel.y * player.down.y;
+		if (dot < -2.0 && velDot > 0.0) {
+			//need respawn!
+			var s = this.path[this.path.length-1].split(",");
+			player.pos.x = parseInt(s[0]) + 0.5;
+			player.pos.y = parseInt(s[1]) + 0.5;
+			player.vel.x = 0.0;
+			player.vel.y = 0.0;
+		}
+	}).call(this);
 
 	//collision detection
 	var playerTile = {
@@ -913,15 +945,97 @@ Main.prototype.draw = function() {
 	gl.disable(gl.DEPTH_TEST);
 	gl.disable(gl.BLEND);
 
-	var s = shaders.tile;
-	gl.useProgram(s);
-
-	gl.uniformMatrix4fv(s.uMVP.location, false, new Mat4(
+	var MVP = new Mat4(
 		this.scale.x, 0.0, 0.0, 0.0,
 		0.0, this.scale.y, 0.0, 0.0,
 		0.0, 0.0, 1.0, 0.0,
 		-this.scale.x * Size.x * 0.5, -this.scale.y * Size.y * 0.5, 0.0, 1.0
-	));
+	);
+
+	//draw switches:
+	(function(){
+		var s = shaders.debug;
+		gl.useProgram(s);
+		gl.uniformMatrix4fv(s.uMVP.location, false, MVP);
+
+		//a top-right corner:
+		var corner = new Array(8);
+		for (var a = 0; a < corner.length; ++a) {
+			var ang = 0.5 * Math.PI * a / (corner.length - 1);
+			corner[a] = {x:Math.cos(ang), y:Math.sin(ang)};
+		}
+		var verts2 = [];
+		var colors = [];
+		for (var idx in this.switches) {
+			var sw = this.switches[idx];
+			var amt = sw.fade;
+
+			function mix(a,b,t) {
+				return (b - a) * t + a;
+			}
+
+			var left = mix(0.0, sw.x, amt);
+			var right = mix(Size.x, sw.x, amt);
+			var bottom = mix(0.0, sw.y, amt);
+			var top = mix(Size.y, sw.y, amt);
+			var r = mix(0.7, SwitchRadius, amt);
+			var col = 0xffffff88;
+
+			for (var i = 0; i < corner.length; ++i) {
+				var x = r * corner[i].x;
+				var y = r * corner[i].y;
+				if (i == 0 && verts2.length) {
+					verts2.push(verts2[verts2.length-2], verts2[verts2.length-1]);
+					colors.push(colors[colors.length-1]);
+					verts2.push(left - x, bottom - y);
+					colors.push(col);
+				}
+				verts2.push(left - x, bottom - y);
+				colors.push(col);
+				verts2.push(left - x, top + y);
+				colors.push(col);
+			}
+			for (var i = corner.length - 1; i >= 0; --i) {
+				var x = r * corner[i].x;
+				var y = r * corner[i].y;
+				verts2.push(right + x, bottom - y);
+				colors.push(col);
+				verts2.push(right + x, top + y);
+				colors.push(col);
+			}
+		}
+
+		if (verts2.length == 0) return;
+
+		verts2 = new Float32Array(verts2);
+		colors = new Uint32Array(colors);
+		
+		var vertsBuffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, vertsBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, verts2, gl.STREAM_DRAW);
+		gl.vertexAttribPointer(s.aVertex.location, 2, gl.FLOAT, false, 0, 0);
+
+		var colorsBuffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, colorsBuffer);
+		gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STREAM_DRAW);
+		gl.vertexAttribPointer(s.aColor.location, 4, gl.UNSIGNED_BYTE, true, 0, 0);
+
+		gl.enableVertexAttribArray(s.aVertex.location);
+		gl.enableVertexAttribArray(s.aColor.location);
+		gl.drawArrays(gl.TRIANGLE_STRIP, 0, verts2.length / 2);
+		gl.disableVertexAttribArray(s.aVertex.location);
+		gl.disableVertexAttribArray(s.aColor.location);
+		gl.bindBuffer(gl.ARRAY_BUFFER, null);
+		gl.deleteBuffer(vertsBuffer);
+		gl.deleteBuffer(colorsBuffer);
+
+	}).call(this);
+
+
+	var s = shaders.tile;
+	gl.useProgram(s);
+
+	gl.uniformMatrix4fv(s.uMVP.location, false, MVP);
 	//gl.uniform4f(s.uColor0.location, 1.0, 0.5, 0.5, 1.0);
 	//gl.uniform4f(s.uColor1.location, 0.7, 1.0, 0.25, 1.0);
 	gl.uniform1i(s.uPosTex.location, 0);
