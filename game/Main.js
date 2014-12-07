@@ -1,6 +1,8 @@
 var Mat4 = engine.Mat4;
 var Vec2 = engine.Vec2;
 
+var Overlays = game.Overlays;
+
 function assert(cond) {
 	if (!cond) {
 		throw new Error("Assertion Failed.");
@@ -29,6 +31,11 @@ var TileEmpty = {
 	triangles:[],
 	hull:[]
 };
+var TileSwitch = {
+	char:'s',
+	triangles:[],
+	hull:[]
+};
 var TileBL = {
 	char:'L',
 	triangles:[{x:Mid, y:Mid, r:0.0}],
@@ -51,32 +58,76 @@ var TileTL = {
 };
 
 var AllTiles = {};
-[ TileEmpty, TileSolid, TileBL, TileBR, TileTR, TileTL ].forEach(function(t){
+[ TileEmpty, TileSwitch, TileSolid, TileBL, TileBR, TileTR, TileTL ].forEach(function(t){
 	AllTiles[t.char] = t;
 });
 
-var StartBoard =
- "       #/ J                     \n"
-+"       #  # J#L ##L             \n"
-+"      /#\\ # # # # #             \n"
-+"       #  / \\#/ ##/             \n"
-+"                /               \n"
-+"##########   ##           ######\n"
-+"#############   J##   #####/ \\##\n"
-+"######         J#     ##/     ##\n"
-+"#######       J##   ####      ##\n"
-+"########     J##### #        J##\n"
-+"##################     #########\n"
-+"##################   #      \\###\n"
-+"#########################L  J###\n"
-+"################################\n"
-+"################################\n";
+function linkOverlays() {
+	//multiple overlays may define an 's', but only one can have the 'p'
+	var pToOverlay = Overlays.pToOverlay = {};
+	var sFromOverlay = Overlays.sFromOverlay = {};
+	Overlays.startPosition = null;
+
+	Overlays.forEach(function(ov, ovi) {
+		var b = ov.str;
+		ov.idx = ovi;
+
+		assert(b.length === (Size.x + 1) * Size.y);
+
+		var x = 0;
+		var y = Size.y - 1;
+		for (var i = 0; i < b.length; ++i) {
+			var c = b[i];
+			if (c === '\n') {
+				x = 0;
+				y -= 1;
+				continue;
+			}
+			var idx = x + "," + y;
+			if (c === 's') {
+				if (!(idx in sFromOverlay)) {
+					sFromOverlay[idx] = [];
+				}
+				sFromOverlay[idx].push(ov);
+			} else if (c === 'p') {
+				if (idx in pToOverlay) {
+					console.warn("Two overlays with p at " + idx);
+				} else {
+					pToOverlay[idx] = ov;
+				}
+			}
+			x += 1;
+		}
+	});
+
+	for (var idx in sFromOverlay) {
+		if (!(idx in pToOverlay)) {
+			console.warn("Overlay(s) with s at " + idx + " have no matching p");
+		}
+	}
+	for (var idx in pToOverlay) {
+		if (!(idx in sFromOverlay)) {
+			if (Overlays.startPosition) {
+				console.warn("Conflicting start position " + idx);
+			} else {
+				console.log("Starting at " + idx);
+				var s = idx.split(",");
+				Overlays.startPosition = {x:parseInt(s[0]), y:parseInt(s[1])};
+			}
+		}
+	}
+	if (Overlays.startPosition === null) {
+		console.error("No start position!");
+	}
+}
 
 function Main() {
 	var ext = gl.getExtension("OES_texture_float");
 	if (ext === null) {
 		console.log("Sorry, you need floating point textures.");
 	}
+
+	linkOverlays();
 
 	//build tile triangles:
 	var data = [];
@@ -155,32 +206,6 @@ function Main() {
 
 	//-------------------------------------------
 
-	//board consists of references to (possibly empty) tiles:
-	this.board = new Array(Size.x * Size.y);
-
-	for (var i = 0; i < this.board.length; ++i) {
-		this.board[i] = TileSolid;
-	}
-
-	(function loadBoard(){
-		var x = 0;
-		var y = Size.y - 1;
-		for (var i = 0; i < StartBoard.length; ++i) {
-			var c = StartBoard[i];
-			if (c === '\n') {
-				x = 0;
-				y -= 1;
-			} else if (AllTiles[c]) {
-				this.board[y * Size.x + x] = AllTiles[c];
-				x += 1;
-			} else {
-				console.warn("Unknown character '" + c + "' in board.");
-				x += 1;
-			}
-		}
-	}).call(this);
-
-	this.setBoard(this.board);
 
 	window.m = this; //DEBUG
 
@@ -191,7 +216,7 @@ function Main() {
 
 	this.mouseTile = {x:-2, y:-2};
 	this.mouseDown = false;
-	this.editTile = TileEmpty;
+	this.editTile = null;
 
 	//------------------------------------
 
@@ -210,14 +235,87 @@ function Main() {
 		goUp:false
 	};
 
+	//board consists of references to (possibly empty) tiles:
+	this.board = new Array(Size.x * Size.y);
+	this.switches = {};
+
+	this.path = [Overlays.startPosition.x + "," + Overlays.startPosition.y];
+	this.rebuildFromPath();
+
 	return this;
 }
 
-Main.prototype.setBoard = function(newBoard) {
+Main.prototype.doOverlay = function(idx) {
+	this.path.push(idx);
+
+	//set up player info:
+	var pos;
+	var s = idx.split(",");
+	pos = {x:parseInt(s[0]), y:parseInt(s[1])};
+
+	this.player.pos.x = pos.x + 0.5;
+	this.player.pos.y = pos.y + 0.5;
+	this.player.vel.x = 0.0;
+	this.player.vel.y = 0.0;
+
+	//actually load overlay:
+
+	if (!(idx in Overlays.pToOverlay)) {
+		console.warn("No overlay for " + idx);
+		//this.board[pos.y * Size.y + pos.x] = TileEmpty;
+	} else {
+		var str = Overlays.pToOverlay[idx].str;
+		assert(str.length === (Size.x + 1) * Size.y);
+
+		var x = 0;
+		var y = Size.y - 1;
+		for (var i = 0; i < str.length; ++i) {
+			var c = str[i];
+			if (c === '\n') {
+				x = 0;
+				y -= 1;
+				continue;
+			}
+			if (c === '.') {
+				//generally, skip '.' character:
+				if (pos === Overlays.startPosition) {
+					//unless it's the first overlay
+					this.board[y * Size.x + x] = AllTiles[' '];
+				}
+			} else if (c === 'p') {
+				//'p' is just an entrance marker
+				this.board[y * Size.x + x] = AllTiles[' '];
+			} else if (AllTiles[c]) {
+				this.board[y * Size.x + x] = AllTiles[c];
+			} else {
+				console.warn("Unknown character '" + c + "' in board.");
+			}
+			x += 1;
+		}
+
+	}
+};
+
+Main.prototype.rebuildFromPath = function() {
+	var path = this.path;
+	this.path = [];
+	//clear board...
+	for (var i = 0; i < this.board.length; ++i) {
+		this.board[i] = TileSolid;
+	}
+
+	path.forEach(function(idx){
+		this.doOverlay(idx);
+	}, this);
+
+	this.startTransition();
+};
+
+Main.prototype.startTransition = function() {
 	var slots = [];
 	for (var y = 0; y < Size.y; ++y) {
 		for (var x = 0; x < Size.x; ++x) {
-			newBoard[y * Size.x + x].triangles.forEach(function(t){
+			this.board[y * Size.x + x].triangles.forEach(function(t){
 				slots.push({x:t.x + x, y:t.y + y, r:t.r});
 			});
 		}
@@ -253,17 +351,31 @@ Main.prototype.setBoard = function(newBoard) {
 	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TexSize, TexSize, 0, gl.RGBA, gl.FLOAT, this.rot);
 	gl.bindTexture(gl.TEXTURE_2D, null);
 
+	//deal with switches:
+	this.switches = {};
+	for (var idx in this.switches) {
+		this.switches[idx].current = false;
+	}
+	for (var y = 0; y < Size.y; ++y) {
+		for (var x = 0; x < Size.x; ++x) {
+			if (this.board[y * Size.x + x] === TileSwitch) {
+				var idx = x + "," + y;
+				if (idx in this.switches) {
+					this.switches[idx].current = true;
+				} else {
+					this.switches[idx] = {
+						x:x+0.5,
+						y:y+0.5,
+						fade:0.0,
+						current:true
+					};
+				}
+			}
+		}
+	}
+
 	//run the transition:
 	this.t = 0.0;
-
-	//TEST:
-	this.testRay = {a:{x:0.0, y:0.0}, b:{x:1.0, y:0.0}};
-	this.testCapsule = {a:{x:5.0, y:2.0}, b:{x:10.0, y:3.0}, r:2.0};
-	this.testHull = [
-		{x:5,y:6},
-		{x:11,y:7},
-		{x:3,y:12}
-	];
 };
 
 Main.prototype.mouse = function(x, y, isDown) {
@@ -276,25 +388,37 @@ Main.prototype.mouse = function(x, y, isDown) {
 		y: Math.floor(worldMouse.y)
 	};
 	if (isDown) {
-		this.testRay.a = worldMouse;
-	/*
+		this.mouseDown = true;
+		//editing actions...
 		if (this.mouseTile.x >= 0 && this.mouseTile.x < Size.x
 		 && this.mouseTile.y >= 0 && this.mouseTile.y < Size.y) {
-		 	var i = this.mouseTile.y * Size.x + this.mouseTile.x;
-			if (this.board[i] !== this.editTile) {
-				this.board[i] = this.editTile;
-				this.setBoard(this.board);
+		 	if (this.editTile) {
+				//draw
+				var idx = this.path[this.path.length-1];
+				var overlay = Overlays.pToOverlay[idx];
+				var i = (Size.y - 1 - this.mouseTile.y) * (Size.x + 1) + this.mouseTile.x;
+				if (overlay.str[i] != this.editTile.char) {
+					overlay.str = overlay.str.substr(0,i) + this.editTile.char + overlay.str.substr(i+1);
+					var old = {x:this.player.pos.x, y:this.player.pos.y};
+					this.rebuildFromPath();
+					this.player.pos.x = old.x;
+					this.player.pos.y = old.y;
+				}
+			} else {
+				//warp
+				this.player.pos.x = worldMouse.x;
+				this.player.pos.y = worldMouse.y;
+				this.player.vel.x = 0.0;
+				this.player.vel.y = 0.0;
 			}
 		}
-	*/
 	} else {
-		this.testRay.b = worldMouse;
 		this.mouseDown = false;
 	}
 };
 
 Main.prototype.key = function(id, isDown) {
-	//console.log(id);
+	console.log(id);
 	if (id === 'Left') {
 		this.player.goLeft = isDown;
 	} else if (id === 'Right') {
@@ -304,31 +428,24 @@ Main.prototype.key = function(id, isDown) {
 	} else if (id === 'Down') {
 		this.player.goDown = isDown;
 	}
-	if (isDown) {
-		if (id === 'U+0051') {
-			this.editTile = TileTL;
-		} else if (id === 'U+0057') {
-			this.editTile = TileTR;
-		} else if (id === 'U+0045') {
-			this.editTile = TileSolid;
-		} else if (id === 'U+0041') {
-			this.editTile = TileBL;
-		} else if (id === 'U+0053') {
-			this.editTile = TileBR;
-		} else if (id === 'U+0044') {
-			this.editTile = TileEmpty;
-		} else if (id === 'Enter') {
-			//dump board as string
-			var out = "";
-			for (var y = Size.y - 1; y >= 0; --y) {
-				for (var x = 0; x < Size.x; ++x) {
-					out += this.board[y * Size.x + x].char;
-				}
-				out += "\n";
+	var me = this;
+	function setTile(code, tile) {
+		if (id === code) {
+			if (isDown) {
+				me.editTile = tile;
 			}
-			console.log(out);
+			if (!isDown && me.editTile === tile) {
+				me.editTile = null;
+			}
 		}
 	}
+	setTile('U+0051', TileTL);
+	setTile('U+0057', TileTR);
+	setTile('U+0045', TileSolid);
+	setTile('U+0041', TileBL);
+	setTile('U+0053', TileBR);
+	setTile('U+0044', TileEmpty);
+	setTile('U+005A', TileSwitch);
 };
 
 Main.prototype.enter = function() {
