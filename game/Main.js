@@ -23,6 +23,8 @@ var PlayerColor = 0xff552277;
 
 var SwitchRadius = 0.3;
 
+var TransitionTime = 1.5;
+
 var Mid = 1.0 - Math.sqrt(2.0) / 2.0;
 var TileSolid = {
 	char:'#',
@@ -207,9 +209,6 @@ function Main() {
 
 	window.m = this; //DEBUG
 
-	//for transition testing:
-	this.t = 0.0;
-
 	this.resize();
 
 	this.mouseTile = {x:-2, y:-2};
@@ -309,7 +308,7 @@ Main.prototype.rebuildFromPath = function(instant) {
 
 	this.startTransition();
 	if (instant) {
-		this.t = 1.0;
+		this.transition.acc = 1.0;
 		for (var idx in this.switches) {
 			var sw = this.switches[idx];
 			if (sw.current) {
@@ -469,7 +468,12 @@ Main.prototype.startTransition = function() {
 	}
 
 	//run the transition:
-	this.t = 0.0;
+	var s = this.path[this.path.length-1].split(",");
+	this.transition = {
+		x:parseInt(s[0])+0.5, y:parseInt(s[1])+0.5,
+		scale:-0.4, maxOffset:Math.hypot(Size.x, Size.y),
+		acc:0.0, speed:1.0 / TransitionTime
+	};
 };
 
 Main.prototype.mouse = function(x, y, isDown) {
@@ -846,8 +850,12 @@ Main.prototype.triggerSwitch = function(idx) {
 Main.prototype.update = function(elapsed) {
 	//---------------------------------------
 	//transition:
-	this.t += elapsed / 0.6;
-	if (this.t > 1.0) this.t = 1.0;
+	if (this.transition.acc < 1.0) {
+		this.transition.acc += this.transition.speed * elapsed;
+		if (this.transition.acc > 1.0) {
+			this.transition.acc = 1.0;
+		}
+	}
 
 	//---------------------------------------
 	//switches:
@@ -857,13 +865,13 @@ Main.prototype.update = function(elapsed) {
 			sw.fade += elapsed / 0.6;
 			if (sw.fade > 1.0) sw.fade = 1.0;
 		} else {
-			sw.fade -= elapsed / 0.8;
+			sw.fade -= elapsed / (TransitionTime * 0.8);
 			if (sw.fade < 0.0) sw.fade = 0.0;
 		}
 	}
 
 	//Don't update further during transitions
-	if (this.t < 1.0) return;
+	if (this.transition.acc < 1.0) return;
 
 	//---------------------------------------
 	//Player:
@@ -1127,7 +1135,11 @@ Main.prototype.draw = function() {
 			var sw = this.switches[idx];
 			var amt = sw.fade;
 
-			amt = 1.0 - (1.0 - amt) * (1.0 - amt);
+			if (sw.current) {
+				amt = amt * amt * amt;
+			} else {
+				amt = 1.0 - (1.0 - amt) * (1.0 - amt);
+			}
 
 			function mix(a,b,t) {
 				return (b - a) * t + a;
@@ -1365,7 +1377,9 @@ Main.prototype.draw = function() {
 	//gl.uniform4f(s.uColor1.location, 0.7, 1.0, 0.25, 1.0);
 	gl.uniform1i(s.uPosTex.location, 0);
 	gl.uniform1i(s.uRotTex.location, 1);
-	gl.uniform1f(s.uT.location, 0.5 - 0.5 * Math.cos(this.t * Math.PI));
+	var amt = this.transition.acc;
+	amt = amt * amt * amt;
+	gl.uniform4f(s.uTransition.location, this.transition.x, this.transition.y, this.transition.scale, this.transition.maxOffset * amt);
 
 /*
 	var mt = new engine.MersenneTwister(0x62344722);
