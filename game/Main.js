@@ -388,6 +388,7 @@ Main.prototype.mouse = function(x, y, isDown) {
 		x: (x * 2.0 / engine.Size.x - 1.0) / this.scale.x + Size.x * 0.5,
 		y: (y * 2.0 / engine.Size.y - 1.0) / this.scale.y + Size.y * 0.5
 	};
+	this.worldMouse = worldMouse;
 	this.mouseTile = {
 		x: Math.floor(worldMouse.x),
 		y: Math.floor(worldMouse.y)
@@ -402,7 +403,7 @@ Main.prototype.mouse = function(x, y, isDown) {
 				var idx = this.path[this.path.length-1];
 				var overlay = Overlays.pToOverlay[idx];
 				var i = (Size.y - 1 - this.mouseTile.y) * (Size.x + 1) + this.mouseTile.x;
-				if (overlay.str[i] != this.editTile.char) {
+				if (overlay.str[i] != this.editTile.char && overlay.str[i] != 'p') {
 					overlay.str = overlay.str.substr(0,i) + this.editTile.char + overlay.str.substr(i+1);
 					var old = {x:this.player.pos.x, y:this.player.pos.y};
 					this.rebuildFromPath();
@@ -994,7 +995,9 @@ Main.prototype.draw = function() {
 	gl.clearColor(0.2, 0.6, 0.2, 1.0);
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 	gl.disable(gl.DEPTH_TEST);
-	gl.disable(gl.BLEND);
+	gl.enable(gl.BLEND);
+	gl.blendEquation(gl.FUNC_ADD);
+	gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
 	var MVP = new Mat4(
 		this.scale.x, 0.0, 0.0, 0.0,
@@ -1030,7 +1033,9 @@ Main.prototype.draw = function() {
 			var bottom = mix(0.0, sw.y, amt);
 			var top = mix(Size.y, sw.y, amt);
 			var r = mix(0.7, SwitchRadius, amt);
-			var col = 0xffffff88;
+			var col = 0xffff88;
+			var alpha = (255.9 * (amt * amt)) | 0;
+			col |= alpha << 24;
 
 			for (var i = 0; i < corner.length; ++i) {
 				var x = r * corner[i].x;
@@ -1132,34 +1137,73 @@ Main.prototype.draw = function() {
 
 	//---------------------------------------------
 	//draw for debug purposes:
+	(function debugDraw(){
+
 	var verts2 = [];
+	var colors = [];
 	//Level hulls:
+
+	var ov = Overlays.pToOverlay[this.path[this.path.length-1]];
 	for (var y = 0; y < Size.y; ++y) {
 		for (var x = 0; x < Size.x; ++x) {
+			var c = ov.str[(Size.y - 1 - y) * (Size.x + 1) + x];
+			var col;
+			if (c == '.') {
+				col = 0xff888888;
+			} else {
+				col = 0xffffffff;
+				var col2 = 0x44ffffff;
+				verts2.push(x + 0.1, y + 0.1); colors.push(col2);
+				verts2.push(x + 0.9, y + 0.1); colors.push(col2);
+
+				verts2.push(x + 0.9, y + 0.1); colors.push(col2);
+				verts2.push(x + 0.9, y + 0.9); colors.push(col2);
+
+				verts2.push(x + 0.9, y + 0.9); colors.push(col2);
+				verts2.push(x + 0.1, y + 0.9); colors.push(col2);
+
+				verts2.push(x + 0.1, y + 0.9); colors.push(col2);
+				verts2.push(x + 0.1, y + 0.1); colors.push(col2);
+			}
 			var h = this.board[y * Size.x + x].hull;
 			var p = h.length - 1;
 			for (var i = 0; i < h.length; ++i) {
 				verts2.push(x + h[p].x, y + h[p].y);
+				colors.push(col);
 				verts2.push(x + h[i].x, y + h[i].y);
+				colors.push(col);
 				p = i;
 			}
+		}
+	}
+
+	if (this.editTile) {
+		var h = this.editTile.hull;
+		var p = h.length - 1;
+		for (var i = 0; i < h.length; ++i) {
+			verts2.push(this.worldMouse.x - 0.5 + h[p].x, this.worldMouse.y - 0.5 + h[p].y);
+			colors.push(0xff0000ff);
+			verts2.push(this.worldMouse.x - 0.5 + h[i].x, this.worldMouse.y - 0.5 + h[i].y);
+			colors.push(0xff0000ff);
+			p = i;
 		}
 	}
 
 
 	function drawCircle(c) {
 		var first = null;
+		var col = 0xffff00ff;
 		function next(v, isEnd) {
 			if (first === null) {
 				first = {x:v.x, y:v.y};
-				verts2.push(v.x, v.y);
+				verts2.push(v.x, v.y); colors.push(col);
 			} else if (!isEnd) {
-				verts2.push(v.x, v.y);
-				verts2.push(v.x, v.y);
+				verts2.push(v.x, v.y); colors.push(col);
+				verts2.push(v.x, v.y); colors.push(col);
 			} else {
-				verts2.push(v.x, v.y);
-				verts2.push(v.x, v.y);
-				verts2.push(first.x, first.y);
+				verts2.push(v.x, v.y); colors.push(col);
+				verts2.push(v.x, v.y); colors.push(col);
+				verts2.push(first.x, first.y); colors.push(col);
 			}
 		}
 		for (var a = 0; a <= 32; ++a) {
@@ -1172,17 +1216,18 @@ Main.prototype.draw = function() {
 
 	function drawHull(h) {
 		var first = null;
+		var col = 0xffff00ff;
 		function next(v, isEnd) {
 			if (first === null) {
 				first = {x:v.x, y:v.y};
-				verts2.push(v.x, v.y);
+				verts2.push(v.x, v.y); colors.push(col);
 			} else if (!isEnd) {
-				verts2.push(v.x, v.y);
-				verts2.push(v.x, v.y);
+				verts2.push(v.x, v.y); colors.push(col);
+				verts2.push(v.x, v.y); colors.push(col);
 			} else {
-				verts2.push(v.x, v.y);
-				verts2.push(v.x, v.y);
-				verts2.push(first.x, first.y);
+				verts2.push(v.x, v.y); colors.push(col);
+				verts2.push(v.x, v.y); colors.push(col);
+				verts2.push(first.x, first.y); colors.push(col);
 			}
 		}
 		for (var i = 0; i < h.length; ++i) {
@@ -1194,17 +1239,18 @@ Main.prototype.draw = function() {
 
 	function drawCapsule(c) {
 		var first = null;
+		var col = 0xffff00ff;
 		function next(v, isEnd) {
 			if (first === null) {
 				first = {x:v.x, y:v.y};
-				verts2.push(v.x, v.y);
+				verts2.push(v.x, v.y); colors.push(col);
 			} else if (!isEnd) {
-				verts2.push(v.x, v.y);
-				verts2.push(v.x, v.y);
+				verts2.push(v.x, v.y); colors.push(col);
+				verts2.push(v.x, v.y); colors.push(col);
 			} else {
-				verts2.push(v.x, v.y);
-				verts2.push(v.x, v.y);
-				verts2.push(first.x, first.y);
+				verts2.push(v.x, v.y); colors.push(col);
+				verts2.push(v.x, v.y); colors.push(col);
+				verts2.push(first.x, first.y); colors.push(col);
 			}
 		}
 		var along = {x:c.b.x-c.a.x, y:c.b.y-c.a.y};
@@ -1302,18 +1348,29 @@ Main.prototype.draw = function() {
 	));
 
 	verts2 = new Float32Array(verts2);
+	colors = new Uint32Array(colors);
 
-	var buffer = gl.createBuffer();
-	gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+
+	var vertsBuffer = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER, vertsBuffer);
 	gl.bufferData(gl.ARRAY_BUFFER, verts2, gl.STREAM_DRAW);
-
 	gl.vertexAttribPointer(s.aVertex.location, 2, gl.FLOAT, false, 0, 0);
+
+	var colorsBuffer = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER, colorsBuffer);
+	gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STREAM_DRAW);
+	gl.vertexAttribPointer(s.aColor.location, 4, gl.UNSIGNED_BYTE, true, 0, 0);
+
 	gl.enableVertexAttribArray(s.aVertex.location);
-	gl.vertexAttrib4f(s.aColor.location, 1.0, 0.0, 1.0, 1.0);
+	gl.enableVertexAttribArray(s.aColor.location);
 	gl.drawArrays(gl.LINES, 0, verts2.length / 2);
 	gl.disableVertexAttribArray(s.aVertex.location);
+	gl.disableVertexAttribArray(s.aColor.location);
 	gl.bindBuffer(gl.ARRAY_BUFFER, null);
-	gl.deleteBuffer(buffer);
+	gl.deleteBuffer(vertsBuffer);
+	gl.deleteBuffer(colorsBuffer);
+
+	}).call(this); //end debugDraw
 };
 
 exports = Main;

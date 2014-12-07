@@ -6,8 +6,6 @@ while (1) {
 		rename("game/Overlays.js", "game/Overlays.js.old");
 		rename("../downloads/Overlays.js", "game/Overlays.js");
 		system("./build.py");
-	} else {
-		print("Doesn't exist\n");
 	}
 	sleep(1);
 }
