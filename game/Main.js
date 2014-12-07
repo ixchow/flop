@@ -3,7 +3,7 @@ var Vec2 = engine.Vec2;
 
 var Editing = true;
 
-var Overlays = game.Overlays;
+var Overlays;
 
 function assert(cond) {
 	if (!cond) {
@@ -125,6 +125,7 @@ function linkOverlays() {
 }
 
 function Main() {
+	Overlays = game.Overlays;
 
 	var ext = gl.getExtension("OES_texture_float");
 	if (ext === null) {

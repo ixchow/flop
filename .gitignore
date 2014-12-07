@@ -6,3 +6,4 @@ build
 *.pyc
 *.blend[1-9]
 /sfx.html
+game/Overlays.js.old
