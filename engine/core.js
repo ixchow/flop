@@ -48,7 +48,10 @@ exports.init = function(onstart) {
 	canvas.onmouseup = engine.mouse.up;
 
 	window.addEventListener('keydown', function(e) {
-		CurrentScene && CurrentScene.keydown && CurrentScene.keydown(e);
+		CurrentScene && CurrentScene.key && CurrentScene.key(e.keyIdentifier, true);
+	});
+	window.addEventListener('keyup', function(e) {
+		CurrentScene && CurrentScene.key && CurrentScene.key(e.keyIdentifier, false);
 	});
 
 	//based on:

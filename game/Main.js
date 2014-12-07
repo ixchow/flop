@@ -1,10 +1,21 @@
 var Mat4 = engine.Mat4;
 var Vec2 = engine.Vec2;
 
+function assert(cond) {
+	if (!cond) {
+		throw new Error("Assertion Failed.");
+	}
+}
+
+var Gravity = 5.0;
+var MaxVel = 5.0;
 
 var Size = {x:32, y:15};
 var Triangles = Size.x * Size.y * 2;
 var TexSize = 64;
+
+var PlayerRadius = 0.4;
+var PlayerHeight = 0.5;
 
 var Mid = 1.0 - Math.sqrt(2.0) / 2.0;
 var TileSolid = {
@@ -39,6 +50,27 @@ var TileTL = {
 	hull:[{x:0.0, y:0.0}, {x:1.0, y:1.0}, {x:0.0, y:1.0}]
 };
 
+var AllTiles = {};
+[ TileEmpty, TileSolid, TileBL, TileBR, TileTR, TileTL ].forEach(function(t){
+	AllTiles[t.char] = t;
+});
+
+var StartBoard =
+ "       #/ J                     \n"
++"       #  # J#L ##L             \n"
++"      /#\\ # # # # #             \n"
++"       #  / \\#/ ##/             \n"
++"                /               \n"
++"##########   ##           ######\n"
++"#############   J##   #####/ \\##\n"
++"######         J#     ##/     ##\n"
++"#######       J##   ####      ##\n"
++"########     J##### #        J##\n"
++"##################     #########\n"
++"##################   #      \\###\n"
++"#########################L  J###\n"
++"################################\n"
++"################################\n";
 
 function Main() {
 	var ext = gl.getExtension("OES_texture_float");
@@ -130,6 +162,26 @@ function Main() {
 		this.board[i] = TileSolid;
 	}
 
+	(function loadBoard(){
+		var x = 0;
+		var y = Size.y - 1;
+		for (var i = 0; i < StartBoard.length; ++i) {
+			var c = StartBoard[i];
+			if (c === '\n') {
+				x = 0;
+				y -= 1;
+			} else if (AllTiles[c]) {
+				this.board[y * Size.x + x] = AllTiles[c];
+				x += 1;
+			} else {
+				console.warn("Unknown character '" + c + "' in board.");
+				x += 1;
+			}
+		}
+	}).call(this);
+
+	this.setBoard(this.board);
+
 	window.m = this; //DEBUG
 
 	//for transition testing:
@@ -140,6 +192,19 @@ function Main() {
 	this.mouseTile = {x:-2, y:-2};
 	this.mouseDown = false;
 	this.editTile = TileEmpty;
+
+	//------------------------------------
+
+	this.player = {
+		pos:{x:4, y:12},
+		rot:0.0,
+		vel:{x:0, y:0},
+		down:{x:0, y:-1},
+		goLeft:false,
+		goRight:false,
+		duck:false,
+		jump:false
+	};
 
 	return this;
 }
@@ -185,14 +250,30 @@ Main.prototype.setBoard = function(newBoard) {
 	gl.bindTexture(gl.TEXTURE_2D, null);
 
 	//run the transition:
-	this.t = 1.0;
+	this.t = 0.0;
+
+	//TEST:
+	this.testRay = {a:{x:0.0, y:0.0}, b:{x:1.0, y:0.0}};
+	this.testCapsule = {a:{x:5.0, y:2.0}, b:{x:10.0, y:3.0}, r:2.0};
+	this.testHull = [
+		{x:5,y:6},
+		{x:11,y:7},
+		{x:3,y:12}
+	];
 };
 
 Main.prototype.mouse = function(x, y, isDown) {
+	var worldMouse = {
+		x: (x * 2.0 / engine.Size.x - 1.0) / this.scale.x + Size.x * 0.5,
+		y: (y * 2.0 / engine.Size.y - 1.0) / this.scale.y + Size.y * 0.5
+	};
 	this.mouseTile = {
-		x: Math.floor((x * 2.0 / engine.Size.x - 1.0) / this.scale.x + Size.x * 0.5),
-		y: Math.floor((y * 2.0 / engine.Size.y - 1.0) / this.scale.y + Size.y * 0.5)};
+		x: Math.floor(worldMouse.x),
+		y: Math.floor(worldMouse.y)
+	};
 	if (isDown) {
+		this.testRay.a = worldMouse;
+	/*
 		if (this.mouseTile.x >= 0 && this.mouseTile.x < Size.x
 		 && this.mouseTile.y >= 0 && this.mouseTile.y < Size.y) {
 		 	var i = this.mouseTile.y * Size.x + this.mouseTile.x;
@@ -201,35 +282,301 @@ Main.prototype.mouse = function(x, y, isDown) {
 				this.setBoard(this.board);
 			}
 		}
+	*/
 	} else {
+		this.testRay.b = worldMouse;
 		this.mouseDown = false;
 	}
 };
 
-Main.prototype.keydown = function(e) {
-	//console.log(e.keyIdentifier);
-	var id = e.keyIdentifier;
-	if (id === 'U+0051') {
-		this.editTile = TileTL;
-	} else if (id === 'U+0057') {
-		this.editTile = TileTR;
-	} else if (id === 'U+0045') {
-		this.editTile = TileSolid;
-	} else if (id === 'U+0041') {
-		this.editTile = TileBL;
-	} else if (id === 'U+0053') {
-		this.editTile = TileBR;
-	} else if (id === 'U+0044') {
-		this.editTile = TileEmpty;
+Main.prototype.key = function(id, isDown) {
+	//console.log(id);
+	if (id === 'Left') {
+		this.player.goLeft = isDown;
+	} else if (id === 'Right') {
+		this.player.goRight = isDown;
+	} else if (id === 'Up') {
+		this.player.jump = isDown;
+	} else if (id === 'Down') {
+		this.player.duck = isDown;
+	}
+	if (isDown) {
+		if (id === 'U+0051') {
+			this.editTile = TileTL;
+		} else if (id === 'U+0057') {
+			this.editTile = TileTR;
+		} else if (id === 'U+0045') {
+			this.editTile = TileSolid;
+		} else if (id === 'U+0041') {
+			this.editTile = TileBL;
+		} else if (id === 'U+0053') {
+			this.editTile = TileBR;
+		} else if (id === 'U+0044') {
+			this.editTile = TileEmpty;
+		} else if (id === 'Enter') {
+			//dump board as string
+			var out = "";
+			for (var y = Size.y - 1; y >= 0; --y) {
+				for (var x = 0; x < Size.x; ++x) {
+					out += this.board[y * Size.x + x].char;
+				}
+				out += "\n";
+			}
+			console.log(out);
+		}
 	}
 };
 
 Main.prototype.enter = function() {
 };
 
+//ray is {a:{}, b:{}}, circle is {x:,y:,r:}
+function rayVsCircle(ray, circle) {
+	//want t such that (t * (b - a) + a - c)^2 = r^2
+	var b_a = {x:ray.b.x - ray.a.x, y:ray.b.y - ray.a.y};
+	var a_c = {x:ray.a.x - circle.x, y:ray.a.y - circle.y};
+	var a = b_a.x * b_a.x + b_a.y * b_a.y;// t^2 * (b - a) * (b - a)
+	var b = 2.0 * (b_a.x * a_c.x + b_a.y * a_c.y);// t * 2.0 * (b - a) * (a - c)
+	var c = a_c.x * a_c.x + a_c.y * a_c.y - circle.r * circle.r;
+
+	var t = Infinity;
+	if (c <= 0.0) {
+		//ray starts inside circle
+		var lenSq = a_c.x * a_c.x + a_c.y * a_c.y;
+		if (lenSq <= 0.001 * 0.001) {
+			return {t:0.0, ox:1.0, oy:0.0};
+		} else {
+			var fac = 1.0 / Math.sqrt(lenSq);
+			return {t:0.0, ox:fac * a_c.x, oy:fac * a_c.y};
+		}
+	} else if (a <= 0.01 * 0.01) {
+		return null; //ray doesn't go anywhere
+	} else {
+		var d = b * b - 4.0 * a * c;
+
+		if (d < 0.0) return null;
+		var m = -b / (2.0 * a);
+		var delta = Math.sqrt(d) / (2.0 * a);
+
+		t = m - delta;
+		if (t < 0.0 || t > 1.0) t = m + delta;
+		assert(!isNaN(t)); //DEBUG
+	}
+	if (t < 0.0 || t > 1.0) return null;
+
+	var pt = {x:b_a.x * t + a_c.x, y:b_a.y * t + a_c.y};
+
+	return {t:t, ox:pt.x/circle.r, oy:pt.y/circle.r};
+}
+
+/* untested
+//ray is {a:{},b:{}}, line is {a:{}, b:{}}
+function rayVsLine(ray, line) {
+	var along = {x:line.b.x - line.a.x, y:line.b.y - line.a.y};
+	var perp = {x:-along.y, y:along.x};
+	var aDot = (ray.a.x - line.a.x) * perp.x + (ray.a.y - line.a.y) * perp.y;
+	var bDot = (ray.b.x - line.a.x) * perp.x + (ray.b.y - line.a.y) * perp.y;
+	if ((aDot < 0.0 && bDot < 0.0) || (aDot > 0.0 && bDot > 0.0)) return null;
+
+	var t;
+	if (Math.abs(bDot - aDot) < 0.01) {
+		t = 0.0;
+	} else {
+		t = (0.0 - aDot) / (bDot - aDot);
+	}
+
+	var pt = {
+		x:(ray.b.x - ray.a.x) * t + ray.a.x,
+		y:(ray.b.y - ray.a.y) * t + ray.a.y
+	};
+
+	var ptAlong = along.x * (pt.x - line.a.x) + along.y * (pt.y - line.a.y);
+	if (ptAlong < 0.0) return null;
+	var lenSq = along.x * along.x + along.y * along.y;
+	if (ptAlong > lenSq) return null;
+
+	var fac = 1.0 / Math.sqrt(lenSq);
+	if (aDot < 0.0) fac = -fac;
+
+	return { t:t, ox:fac * perp.x, oy: fac * perp.y };
+}*/
+
+//ray is {a:{x:,y:}, b:{x:,y:}}, capsule is {a:{x:,y:}, b:{x:,y:}, r:}
+//returns null or {ox:, oy:, t:}
+function rayVsCapsule(ray, capsule) {
+
+	var along = {x:capsule.b.x - capsule.a.x, y:capsule.b.y - capsule.a.y};
+
+	var raDot = along.x * (ray.a.x - capsule.a.x) + along.y * (ray.a.y - capsule.a.y);
+	var rbDot = along.x * (ray.b.x - capsule.a.x) + along.y * (ray.b.y - capsule.a.y);
+	var cbDot = along.x * along.x + along.y * along.y;
+
+
+	var isect = null;
+	if (raDot < 0.0 || rbDot < 0.0) {
+		//if ray starts or ends outside middle segment, test low endpoint
+		var test = rayVsCircle(ray, {x:capsule.a.x, y:capsule.a.y, r:capsule.r});
+		if (test && (!isect || test.t < isect.t)) {
+			isect = test;
+		}
+	}
+	if (raDot > cbDot || rbDot > cbDot) {
+		//if ray starts or ends outside the max of the middle segment,
+		//test high endpoint
+		var test = rayVsCircle(ray, {x:capsule.b.x, y:capsule.b.y, r:capsule.r});
+		if (test && (!isect || test.t < isect.t)) {
+			isect = test;
+		}
+	}
+	if (!((raDot < 0.0 && rbDot < 0.0) || (raDot > cbDot && rbDot > cbDot))) {
+		//if ray doesn't avoid middle segment entirely, test it.
+		var perp = {x:-along.y, y:along.x};
+		var lenSq = perp.x * perp.x + perp.y * perp.y;
+		var fac = 1.0 / Math.sqrt(lenSq);
+		perp.x *= fac; perp.y *= fac;
+		var raPerp = perp.x * (ray.a.x - capsule.a.x) + perp.y * (ray.a.y - capsule.a.y);
+		var rbPerp = perp.x * (ray.b.x - capsule.a.x) + perp.y * (ray.b.y - capsule.a.y);
+		var t = Infinity;
+		if (Math.abs(raPerp) <= capsule.r) {
+			//isect right at start!
+			t = 0.0;
+		} else if (raPerp > capsule.r && rbPerp < capsule.r) {
+			t = (capsule.r - raPerp) / (rbPerp - raPerp);
+		} else if (raPerp <-capsule.r && rbPerp >-capsule.r) {
+			t = (-capsule.r - raPerp) / (rbPerp - raPerp);
+		}
+		var tDot = t * (rbDot - raDot) + raDot;
+		if (tDot > 0.0 && tDot < cbDot) {
+			var test = {t:t, ox:perp.x, oy:perp.y};
+			test.ox *= Math.sign(raPerp);
+			test.oy *= Math.sign(raPerp);
+			if (!isect || test.t <= isect.t) {
+				isect = test;
+			}
+		}
+	}
+
+	assert(!isect || !isNaN(isect.t));
+	return isect;
+}
+
+//swept circle is {a:{xy}, b:{xy}, r:}, hull is [{x:,y:}, ... ] in counterclockwise order
+//returns null or {ox:,oy:,t:} for collision
+function sweptCircleVsHull(sweep, hull) {
+	var isect = null;
+	var p = hull.length - 1;
+	for (var i = 0; i < hull.length; ++i) {
+		var test = rayVsCapsule({a:sweep.a, b:sweep.b}, {a:hull[p], b:hull[i], r:sweep.r});
+		if (test && (!isect || isect.t > test.t)) {
+			isect = test;
+		}
+		p = i;
+	}
+	return isect;
+}
+
+Main.prototype.sweepVsBoard = function(sweep) {
+	var minx = 0;
+	var maxx = Size.x - 1;
+	var miny = 0;
+	var maxy = Size.y - 1;
+	var isect = null;
+	for (var y = miny; y <= maxy; ++y) {
+		for (var x = minx; x <= maxx; ++x) {
+			var t = this.board[y * Size.x + x];
+			if (t.hull.length === 0) continue;
+			var xfSweep = {
+				a:{x:sweep.a.x - x, y:sweep.a.y - y},
+				b:{x:sweep.b.x - x, y:sweep.b.y - y},
+				r:sweep.r
+			};
+			var test = sweptCircleVsHull(xfSweep, t.hull);
+			if (test && (!isect || test.t < isect.t)) {
+				isect = test;
+			}
+		}
+	}
+	return isect;
+};
+
+var LogCount = 0;
+
 Main.prototype.update = function(elapsed) {
 	this.t += elapsed / 0.6;
 	if (this.t > 1.0) this.t = 1.0;
+
+	var player = this.player;
+
+
+	//(a) Are we on the ground? because if so we should modify motion.
+	var isect = this.sweepVsBoard({
+		a:{x:player.pos.x - 0.5 * PlayerRadius, y:player.pos.y - 0.5 * PlayerHeight},
+		b:{x:player.pos.x + 0.5 * PlayerRadius, y:player.pos.y - 0.5 * PlayerHeight},
+		r:PlayerHeight * 0.5
+	});
+	
+	var wantVel = 0.0;
+	if (player.goLeft && !player.goRight) {
+		wantVel = -2.0;
+	}
+	if (player.goRight && !player.goLeft) {
+		wantVel =  2.0;
+	}
+	if (isect) {
+		//on the ground!
+		player.vel.x += (wantVel - player.vel.x) * (1.0 - Math.pow(0.5, elapsed / 0.05));
+	} else {
+		//not on the ground!
+		//player.vel.x += (wantVel - player.vel.x) * (1.0 - Math.pow(0.5, elapsed / 10.0));
+	}
+
+
+	//(b) check player motion against level, arrest any velocity into level
+	var sweep = {
+		a:{x:player.pos.x, y:player.pos.y},
+		b:{x:player.pos.x + player.vel.x * elapsed, y:player.pos.y + player.vel.y * elapsed},
+		r:PlayerRadius
+	};
+	var isect = this.sweepVsBoard(sweep);
+
+	if (isect) {
+		var dot = isect.ox * player.vel.x + isect.oy * player.vel.y;
+		player.vel.x -= isect.ox * dot;
+		player.vel.y -= isect.oy * dot;
+		player.pos.x += player.vel.x * elapsed;
+		player.pos.y += player.vel.y * elapsed;
+	} else {
+		player.pos.x = sweep.b.x;
+		player.pos.y = sweep.b.y;
+	}
+
+
+
+
+	player.pos.x = Math.max(0.0, player.pos.x);
+	player.pos.y = Math.max(0.0, player.pos.y);
+	player.pos.x = Math.min(Size.x, player.pos.x);
+	player.pos.y = Math.min(Size.y, player.pos.y);
+
+	player.vel.x += Gravity * player.down.x * elapsed;
+	player.vel.y += Gravity * player.down.y * elapsed;
+
+	//collision detection
+	var playerTile = {
+		x:player.pos.x | 0,
+		y:player.pos.y | 0
+	};
+
+
+	var lenSq = player.vel.x * player.vel.x + player.vel.y * player.vel.y;
+	if (lenSq > MaxVel * MaxVel) {
+		var fac = MaxVel / Math.sqrt(lenSq);
+		player.vel.x *= fac;
+		player.vel.y *= fac;
+	} if (lenSq < 0.01 * 0.01) {
+		player.vel.x = 0.0;
+		player.vel.y = 0.0;
+	}
 };
 
 Main.prototype.resize = function() {
@@ -293,7 +640,7 @@ Main.prototype.draw = function() {
 	gl.bindBuffer(gl.ARRAY_BUFFER, this.tileBuffer);
 	gl.vertexAttribPointer(s.aData.location, 4, gl.FLOAT, false, 0, 0);
 	gl.enableVertexAttribArray(s.aData.location);
-	gl.drawArrays(gl.TRIANGLES, 0, this.tileBuffer.verts);
+	//gl.drawArrays(gl.TRIANGLES, 0, this.tileBuffer.verts);
 	gl.disableVertexAttribArray(s.aData.location);
 	gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
@@ -301,6 +648,183 @@ Main.prototype.draw = function() {
 	gl.bindTexture(gl.TEXTURE_2D, null);
 	gl.activeTexture(gl.TEXTURE0);
 	gl.bindTexture(gl.TEXTURE_2D, null);
+
+	//---------------------------------------------
+	//draw for debug purposes:
+	var verts2 = [];
+	//Level hulls:
+	for (var y = 0; y < Size.y; ++y) {
+		for (var x = 0; x < Size.x; ++x) {
+			var h = this.board[y * Size.x + x].hull;
+			var p = h.length - 1;
+			for (var i = 0; i < h.length; ++i) {
+				verts2.push(x + h[p].x, y + h[p].y);
+				verts2.push(x + h[i].x, y + h[i].y);
+				p = i;
+			}
+		}
+	}
+
+
+	function drawCircle(c) {
+		var first = null;
+		function next(v, isEnd) {
+			if (first === null) {
+				first = {x:v.x, y:v.y};
+				verts2.push(v.x, v.y);
+			} else if (!isEnd) {
+				verts2.push(v.x, v.y);
+				verts2.push(v.x, v.y);
+			} else {
+				verts2.push(v.x, v.y);
+				verts2.push(v.x, v.y);
+				verts2.push(first.x, first.y);
+			}
+		}
+		for (var a = 0; a <= 32; ++a) {
+			var ang = a * Math.PI / 32 * 2.0;
+
+			var v = { x:Math.cos(ang) * c.r + c.x, y:Math.sin(ang) * c.r + c.y};
+			next(v, a == 32);
+		}
+	}
+
+	function drawHull(h) {
+		var first = null;
+		function next(v, isEnd) {
+			if (first === null) {
+				first = {x:v.x, y:v.y};
+				verts2.push(v.x, v.y);
+			} else if (!isEnd) {
+				verts2.push(v.x, v.y);
+				verts2.push(v.x, v.y);
+			} else {
+				verts2.push(v.x, v.y);
+				verts2.push(v.x, v.y);
+				verts2.push(first.x, first.y);
+			}
+		}
+		for (var i = 0; i < h.length; ++i) {
+			next(h[i], i + 1 == h.length);
+		}
+	}
+
+
+
+	function drawCapsule(c) {
+		var first = null;
+		function next(v, isEnd) {
+			if (first === null) {
+				first = {x:v.x, y:v.y};
+				verts2.push(v.x, v.y);
+			} else if (!isEnd) {
+				verts2.push(v.x, v.y);
+				verts2.push(v.x, v.y);
+			} else {
+				verts2.push(v.x, v.y);
+				verts2.push(v.x, v.y);
+				verts2.push(first.x, first.y);
+			}
+		}
+		var along = {x:c.b.x-c.a.x, y:c.b.y-c.a.y};
+		var lenSq = along.x * along.x + along.y * along.y;
+		if (lenSq > 0.01 * 0.01) {
+			var fac = 1.0 / Math.sqrt(lenSq);
+			along.x *= fac; along.y *= fac;
+		} else {
+			along.x = 1.0; along.y = 0.0;
+		}
+		var perp = {x:-along.y, y:along.x};
+		for (var a = 0; a <= 16; ++a) {
+			var ang = a * Math.PI / 32 * 2.0;
+
+			var v = { x:Math.cos(ang) * c.r, y:Math.sin(ang) * c.r };
+			next({
+				x: v.x * perp.x - v.y * along.x + c.a.x,
+				y: v.x * perp.y - v.y * along.y + c.a.y
+			}, false);
+		}
+		for (var a = 16; a <= 32; ++a) {
+			var ang = a * Math.PI / 32 * 2.0;
+
+			var v = { x:Math.cos(ang) * c.r, y:Math.sin(ang) * c.r };
+			next({
+				x: v.x * perp.x - v.y * along.x + c.b.x,
+				y: v.x * perp.y - v.y * along.y + c.b.y
+			}, a == 32);
+		}
+	}
+
+	//Player:
+	(function(){
+		var player = this.player;
+		drawCircle({x:player.pos.x, y:player.pos.y, r:PlayerRadius});
+		//ground check capsule
+		drawCapsule({
+			a:{x:player.pos.x - 0.5 * PlayerRadius, y:player.pos.y - 0.5 * PlayerHeight},
+			b:{x:player.pos.x + 0.5 * PlayerRadius, y:player.pos.y - 0.5 * PlayerHeight},
+			r:0.5 * PlayerRadius
+		});
+	}).call(this);
+
+
+	(function testRayVsCapsule() {
+		//drawCapsule(this.testCapsule);
+		//var isect = rayVsCapsule(this.testRay, this.testCapsule);
+		//var testCircle = {x:this.testCapsule.b.x, y:this.testCapsule.b.y, r:this.testCapsule.r};
+		//drawCircle(testCircle);
+		//var isect = rayVsCircle(this.testRay, testCircle);
+
+		drawHull(this.testHull);
+		var isect = sweptCircleVsHull(
+			{a:this.testRay.a, b:this.testRay.b, r:0.75},
+			this.testHull);
+
+
+		if (isect) {
+			var pt = {
+				x:isect.t * (this.testRay.b.x - this.testRay.a.x) + this.testRay.a.x,
+				y:isect.t * (this.testRay.b.y - this.testRay.a.y) + this.testRay.a.y
+			};
+			drawCapsule({a:this.testRay.a, b:pt, r:0.75});
+			/*
+			verts2.push(this.testRay.a.x, this.testRay.a.y);
+			verts2.push(pt.x, pt.y);
+			verts2.push(pt.x, pt.y);
+			verts2.push(pt.x + isect.ox, pt.y + isect.oy);
+			*/
+		} else {
+			drawCapsule({a:this.testRay.a, b:this.testRay.b, r:0.75});
+			/*
+			verts2.push(this.testRay.a.x, this.testRay.a.y);
+			verts2.push(this.testRay.b.x, this.testRay.b.y);
+			*/
+		}
+
+	}).call(this);
+
+	var s = shaders.debug;
+	gl.useProgram(s);
+	gl.uniformMatrix4fv(s.uMVP.location, false, new Mat4(
+		this.scale.x, 0.0, 0.0, 0.0,
+		0.0, this.scale.y, 0.0, 0.0,
+		0.0, 0.0, 1.0, 0.0,
+		-this.scale.x * Size.x * 0.5, -this.scale.y * Size.y * 0.5, 0.0, 1.0
+	));
+
+	verts2 = new Float32Array(verts2);
+
+	var buffer = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+	gl.bufferData(gl.ARRAY_BUFFER, verts2, gl.STREAM_DRAW);
+
+	gl.vertexAttribPointer(s.aVertex.location, 2, gl.FLOAT, false, 0, 0);
+	gl.enableVertexAttribArray(s.aVertex.location);
+	gl.vertexAttrib4f(s.aColor.location, 1.0, 0.0, 1.0, 1.0);
+	gl.drawArrays(gl.LINES, 0, verts2.length / 2);
+	gl.disableVertexAttribArray(s.aVertex.location);
+	gl.bindBuffer(gl.ARRAY_BUFFER, null);
+	gl.deleteBuffer(buffer);
 };
 
 exports = Main;
