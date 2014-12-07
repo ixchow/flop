@@ -604,32 +604,73 @@ Main.prototype.update = function(elapsed) {
 
 
 	//(a) Are we on the ground? because if so we should modify motion.
-	var toCheck = this.groundCheckCapsules();
 	var onGround = false;
 	var rightRamp = false;
 	var leftRamp = false;
-	toCheck.forEach(function(c){
-		var nearby = {};
-		while (1) {
-			var isect = this.sweepVsBoard(c, nearby);
-			if (isect) {
-				var dot = c.dir.x * isect.ox + c.dir.y * isect.oy;
-				if (c.rightRamp || c.leftRamp) {
-					if (dot < -0.99) {
-						if (c.rightRamp) rightRamp = true;
-						if (c.leftRamp) leftRamp = true;
+	var flatRamp = false;
+
+	function checkGround() {
+		onGround = false;
+		rightRamp = false;
+		leftRamp = false;
+		flatRamp = false;
+
+		var toCheck = this.groundCheckCapsules();
+		toCheck.forEach(function(c){
+			var nearby = {};
+			while (1) {
+				var isect = this.sweepVsBoard(c, nearby);
+				if (isect) {
+					var dot = c.dir.x * isect.ox + c.dir.y * isect.oy;
+					if (c.rightRamp || c.leftRamp) {
+						if (dot < -0.99) {
+							if (c.rightRamp) rightRamp = true;
+							if (c.leftRamp) leftRamp = true;
+						}
+					} else {
+						if (dot < -0.5) {
+							onGround = true;
+						}
+						if (dot < -0.99) {
+							flatRamp = true;
+						}
 					}
+					nearby[isect.idx] = isect;
 				} else {
-					if (dot < -0.5) {
-						onGround = true;
-					}
+					break;
 				}
-				nearby[isect.idx] = isect;
-			} else {
-				break;
 			}
-		}
-	}, this);
+		}, this);
+	}
+
+	checkGround.call(this);
+
+	/* Only with magic shoes
+	if ((!leftRamp && !flatRamp && rightRamp) && onGround) {
+		player.down = {
+			x:Sqrt2_2 * (player.down.x - player.down.y),
+			y:Sqrt2_2 * (player.down.y + player.down.x)
+		};
+		checkGround.call(this);
+	}
+	if ((leftRamp && !flatRamp && !rightRamp) && onGround) {
+		player.down = {
+			x:Sqrt2_2 * (player.down.x + player.down.y),
+			y:Sqrt2_2 * (player.down.y - player.down.x)
+		};
+		checkGround.call(this);
+	}
+	//some basic fix-up to prevent too much rotation:
+	if (Math.abs(player.down.x) > 0.9) {
+		player.down.x = Math.sign(player.down.x);
+		player.down.y = 0.0;
+	}
+	if (Math.abs(player.down.y) > 0.9) {
+		player.down.x = 0.0;
+		player.down.y = Math.sign(player.down.y);
+	}
+	*/
+
 
 	var relVel = {
 		x: -player.down.y * player.vel.x + player.down.x * player.vel.y,
