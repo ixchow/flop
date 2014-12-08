@@ -1,7 +1,7 @@
 var Mat4 = engine.Mat4;
 var Vec2 = engine.Vec2;
 
-var Editing = true;
+var Editing = false;
 
 var Overlays, Colors;
 
@@ -86,6 +86,8 @@ function linkOverlays() {
 
 		assert(b.length === (Size.x + 1) * Size.y);
 
+		var empty = true;
+
 		var x = 0;
 		var y = Size.y - 1;
 		for (var i = 0; i < b.length; ++i) {
@@ -94,6 +96,9 @@ function linkOverlays() {
 				x = 0;
 				y -= 1;
 				continue;
+			}
+			if (c !== '.' && c !== 'p') {
+				empty = false;
 			}
 			var idx = x + "," + y;
 			if (c === 's') {
@@ -110,6 +115,9 @@ function linkOverlays() {
 			}
 			x += 1;
 		}
+		if (empty) {
+			console.log("Overlay " + ovi + " is empty.");
+		}
 	});
 
 	for (var idx in sFromOverlay) {
@@ -120,7 +128,7 @@ function linkOverlays() {
 	for (var idx in pToOverlay) {
 		if (!(idx in sFromOverlay)) {
 			if (Overlays.startPosition) {
-				console.warn("Conflicting start position " + idx);
+				console.warn("Conflicting start position " + idx + " at index: " + Overlays.indexOf(pToOverlay[idx]));
 			} else {
 				console.log("Starting at " + idx);
 				var s = idx.split(",");
@@ -136,6 +144,11 @@ function linkOverlays() {
 function Main() {
 	Overlays = game.Overlays;
 	Colors = game.Colors;
+
+	var query = window.location.search.substr(1);
+	if (query == "Edit") {
+		Editing = true;
+	}
 
 	var ext = gl.getExtension("OES_texture_float");
 	if (ext === null) {
