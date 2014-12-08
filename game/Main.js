@@ -19,7 +19,7 @@ var Triangles = Size.x * Size.y * 2;
 var TexSize = 64;
 
 var PlayerRadius = 0.4;
-var PlayerColor = 0xff552277;
+var PlayerColor = 0xff444444;
 
 var SwitchRadius = 0.3;
 
@@ -1165,7 +1165,7 @@ Main.prototype.resize = function() {
 };
 
 Main.prototype.draw = function() {
-	gl.clearColor(1.0, 1.0, 1.0, 1.0);
+	gl.clearColor(0.9, 0.9, 0.9, 1.0);
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 	gl.disable(gl.DEPTH_TEST);
 	gl.enable(gl.BLEND);
@@ -1286,7 +1286,7 @@ Main.prototype.draw = function() {
 				}
 			}
 			//border:
-			col = 0xff000000;
+			col = 0xffffffff;
 			if (true) {
 				for (var i = 0; i < corner.length; ++i) {
 					var x = left + rBL - rBL * corner[i].x;
