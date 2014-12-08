@@ -3,7 +3,7 @@ var Vec2 = engine.Vec2;
 
 var Editing = true;
 
-var Overlays;
+var Overlays, Colors;
 
 function assert(cond) {
 	if (!cond) {
@@ -130,6 +130,7 @@ function linkOverlays() {
 
 function Main() {
 	Overlays = game.Overlays;
+	Colors = game.Colors;
 
 	var ext = gl.getExtension("OES_texture_float");
 	if (ext === null) {
@@ -167,13 +168,15 @@ function Main() {
 
 	//-------------------------------------------
 
-	this.triSlots = Array(Size.x * Size.y * 2);
-	this.slotTris = Array(Size.x * Size.y * 4); //four slots per tile
+	this.triSlots = new Array(Size.x * Size.y * 2);
+	this.triMoved = new Array(Size.x * Size.y * 2);
+	this.slotTris = new Array(Size.x * Size.y * 4); //four slots per tile
 	for (var s = 0; s < this.slotTris.length; ++s) {
 		this.slotTris[s] = [];
 	}
 	for (var t = 0; t < this.triSlots.length; ++t) {
 		this.triSlots[t] = t * 2;
+		this.triMoved[t] = true;
 		this.slotTris[this.triSlots[t]].push(t);
 	}
 
@@ -181,9 +184,10 @@ function Main() {
 
 	this.pos = new Float32Array(4 * TexSize * TexSize);
 	this.rot = new Float32Array(4 * TexSize * TexSize);
+	this.col = new Uint8Array(4 * TexSize * TexSize);
 
-	this.pushPosRot();
-	this.pushPosRot();
+	this.pushPosRot(0);
+	this.pushPosRot(0);
 
 	this.posTex = gl.createTexture();
 	gl.bindTexture(gl.TEXTURE_2D, this.posTex);
@@ -203,6 +207,32 @@ function Main() {
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 	gl.bindTexture(gl.TEXTURE_2D, null);
 
+	this.colTex = gl.createTexture();
+	gl.bindTexture(gl.TEXTURE_2D, this.colTex);
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TexSize, TexSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.col);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+	gl.bindTexture(gl.TEXTURE_2D, null);
+
+	var colors = new Uint8Array(4 * Colors.length);
+	Colors.forEach(function(c, ci) {
+		colors[4*ci+0] = c & 0xff;
+		colors[4*ci+1] = (c >> 8) & 0xff;
+		colors[4*ci+2] = (c >> 16) & 0xff;
+		colors[4*ci+3] = 0xff;
+	});
+	this.colorsTex = gl.createTexture();
+	gl.bindTexture(gl.TEXTURE_2D, this.colorsTex);
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 2, Colors.length / 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, colors);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+	gl.bindTexture(gl.TEXTURE_2D, null);
+
+
 	
 	//-------------------------------------------
 
@@ -214,6 +244,8 @@ function Main() {
 	this.mouseTile = {x:-2, y:-2};
 	this.mouseDown = false;
 	this.editTile = null;
+
+	this.nextColor = 0;
 
 	//------------------------------------
 
@@ -320,11 +352,12 @@ Main.prototype.rebuildFromPath = function(instant) {
 	}
 };
 
-Main.prototype.pushPosRot = function() {
+Main.prototype.pushPosRot = function(nextColor) {
 	//set this.pos and this.rot from this.slotTris
 
 	var pos = this.pos;
 	var rot = this.rot;
+	var col = this.col;
 
 	var st = [
 		{x:1.0 - Sqrt2_2, y:1.0 - Sqrt2_2, r:0.0},
@@ -342,13 +375,21 @@ Main.prototype.pushPosRot = function() {
 		tris.forEach(function(t, ti){
 			pos[4*t+0] = pos[4*t+2];
 			pos[4*t+1] = pos[4*t+3];
-			pos[4*t+2] = sx + st[si].x + 0.1 * (r() - 0.5);
-			pos[4*t+3] = sy + st[si].y + 0.1 * (r() - 0.5);
 			rot[4*t+0] = rot[4*t+2];
 			rot[4*t+1] = rot[4*t+3];
+			col[4*t+0] = col[4*t+2];
+			col[4*t+1] = col[4*t+3];
+
+			pos[4*t+2] = sx + st[si].x + 0.1 * (r() - 0.5);
+			pos[4*t+3] = sy + st[si].y + 0.1 * (r() - 0.5);
 			rot[4*t+2] = st[si].r + 0.2 * (r() - 0.5);
 			rot[4*t+3] = ti;
-		});
+			if (this.triMoved[t]) {
+				col[4*t+2] = (r() * 255.9) | 0;
+				col[4*t+3] = (nextColor * 255) / (Colors.length / 2);
+				this.triMoved[t] = false;
+			}
+		}, this);
 	}, this);
 };
 
@@ -385,10 +426,12 @@ Main.prototype.startTransition = function() {
 		}
 	}
 
+/*
 	console.log("Have " + freeTris.length + " free triangles.");
 	for (var i = 0; i < countSlots.length; ++i) {
 		console.log(i + ": " + countSlots[i].length);
 	}
+*/
 
 
 	function shuffle(arr) {
@@ -414,6 +457,7 @@ Main.prototype.startTransition = function() {
 		countSlots[count+1].push(slot);
 
 		this.triSlots[ti] = slot;
+		this.triMoved[ti] = true;
 		this.slotTris[slot].push(ti);
 	}, this);
 
@@ -431,10 +475,19 @@ Main.prototype.startTransition = function() {
 		var targ = countSlots[0].pop();
 
 		this.triSlots[ti] = targ;
+		this.triMoved[ti] = true;
 		this.slotTris[targ].push(ti);
 	}
 
-	this.pushPosRot();
+	var idx = this.path[this.path.length-1];
+	var color;
+	if (idx in this.switches) {
+		color = this.switches[idx].color;
+	} else {
+		color = this.nextColor;
+	}
+
+	this.pushPosRot(color);
 
 	//re-upload textures:
 	gl.bindTexture(gl.TEXTURE_2D, this.posTex);
@@ -444,6 +497,11 @@ Main.prototype.startTransition = function() {
 	gl.bindTexture(gl.TEXTURE_2D, this.rotTex);
 	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TexSize, TexSize, 0, gl.RGBA, gl.FLOAT, this.rot);
 	gl.bindTexture(gl.TEXTURE_2D, null);
+
+	gl.bindTexture(gl.TEXTURE_2D, this.colTex);
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TexSize, TexSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.col);
+	gl.bindTexture(gl.TEXTURE_2D, null);
+
 
 	//deal with switches:
 	for (var idx in this.switches) {
@@ -456,11 +514,13 @@ Main.prototype.startTransition = function() {
 				if (idx in this.switches) {
 					this.switches[idx].current = true;
 				} else {
+					this.nextColor = (this.nextColor + 2) % Colors.length;
 					this.switches[idx] = {
 						x:x+0.5,
 						y:y+0.5,
 						fade:0.0,
-						current:true
+						current:true,
+						color:this.nextColor
 					};
 				}
 			}
@@ -1103,7 +1163,7 @@ Main.prototype.resize = function() {
 };
 
 Main.prototype.draw = function() {
-	gl.clearColor(0.2, 0.6, 0.2, 1.0);
+	gl.clearColor(1.0, 1.0, 1.0, 1.0);
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 	gl.disable(gl.DEPTH_TEST);
 	gl.enable(gl.BLEND);
@@ -1192,7 +1252,7 @@ Main.prototype.draw = function() {
 
 			})();
 
-			var col = 0xffff88;
+			var col = Colors[sw.color];
 			var alpha = (255.9 * (amt * amt)) | 0;
 			col |= alpha << 24;
 
@@ -1377,6 +1437,8 @@ Main.prototype.draw = function() {
 	//gl.uniform4f(s.uColor1.location, 0.7, 1.0, 0.25, 1.0);
 	gl.uniform1i(s.uPosTex.location, 0);
 	gl.uniform1i(s.uRotTex.location, 1);
+	gl.uniform1i(s.uColTex.location, 2);
+	gl.uniform1i(s.uColorsTex.location, 3);
 	var amt = this.transition.acc;
 	amt = amt * amt * amt;
 	gl.uniform4f(s.uTransition.location, this.transition.x, this.transition.y, this.transition.scale, this.transition.maxOffset * amt);
@@ -1402,6 +1464,10 @@ Main.prototype.draw = function() {
 	data3 = new Float32Array(data3);
 	*/
 
+	gl.activeTexture(gl.TEXTURE3);
+	gl.bindTexture(gl.TEXTURE_2D, this.colorsTex);
+	gl.activeTexture(gl.TEXTURE2);
+	gl.bindTexture(gl.TEXTURE_2D, this.colTex);
 	gl.activeTexture(gl.TEXTURE1);
 	gl.bindTexture(gl.TEXTURE_2D, this.rotTex);
 	gl.activeTexture(gl.TEXTURE0);
@@ -1413,6 +1479,10 @@ Main.prototype.draw = function() {
 	gl.disableVertexAttribArray(s.aData.location);
 	gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
+	gl.activeTexture(gl.TEXTURE3);
+	gl.bindTexture(gl.TEXTURE_2D, null);
+	gl.activeTexture(gl.TEXTURE2);
+	gl.bindTexture(gl.TEXTURE_2D, null);
 	gl.activeTexture(gl.TEXTURE1);
 	gl.bindTexture(gl.TEXTURE_2D, null);
 	gl.activeTexture(gl.TEXTURE0);
