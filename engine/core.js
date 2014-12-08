@@ -60,7 +60,7 @@ exports.init = function(onstart) {
 	window.gl = null;
 	try {
 		var attribs = {};
-		attribs.antialias = false;
+		attribs.antialias = true;
 		gl = canvas.getContext("webgl", attribs) || canvas.getcontext("experimental-webgl", attribs);
 	}
 	catch(e) {
