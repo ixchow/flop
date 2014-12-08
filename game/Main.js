@@ -63,6 +63,11 @@ var TileTL = {
 	slots:[false, false, false, true],
 	hull:[{x:0.0, y:0.0}, {x:1.0, y:1.0}, {x:0.0, y:1.0}]
 };
+var RemoveOverlay = {
+	char:'.',
+	hull:[{x:0.0, y:0.0}, {x:1.0, y:1.0}, {x:0.5, y:0.5},
+		  {x:0.0,y:1.0}, {x:1.0,y:0.0}, {x:0.5, y:0.5}]
+};
 
 var AllTiles = {};
 [ TileEmpty, TileSwitch, TileSolid, TileBL, TileBR, TileTR, TileTL ].forEach(function(t){
@@ -246,6 +251,8 @@ function Main() {
 	this.editTile = null;
 
 	this.nextColor = 0;
+
+	this.pulse = 0.0;
 
 	//------------------------------------
 
@@ -517,6 +524,7 @@ Main.prototype.startTransition = function() {
 					this.switches[idx].current = true;
 				} else {
 					this.nextColor = (this.nextColor + 1) % (Colors.length / 2);
+					if (this.nextColor == 0) this.nextColor = 1;
 					this.switches[idx] = {
 						x:x+0.5,
 						y:y+0.5,
@@ -580,7 +588,7 @@ Main.prototype.mouse = function(x, y, isDown) {
 };
 
 Main.prototype.key = function(id, isDown) {
-	//console.log(id);
+	console.log(id);
 	if (id === 'Left') {
 		this.player.goLeft = isDown;
 	} else if (id === 'Right') {
@@ -608,6 +616,7 @@ Main.prototype.key = function(id, isDown) {
 	setTile('U+0053', TileBR);
 	setTile('U+0044', TileEmpty);
 	setTile('U+005A', TileSwitch);
+	setTile('U+0058', RemoveOverlay);
 
 	if (id === 'Enter' && isDown) {
 		if (Editing) {
@@ -910,6 +919,9 @@ Main.prototype.triggerSwitch = function(idx) {
 };
 
 Main.prototype.update = function(elapsed) {
+
+	this.pulse = (this.pulse + elapsed / 10.0) % 1.0;
+
 	//---------------------------------------
 	//transition:
 	if (this.transition.acc < 1.0) {
@@ -1207,6 +1219,8 @@ Main.prototype.draw = function() {
 				return (b - a) * t + a;
 			}
 
+			var pulse = Math.sin(this.pulse * Math.PI * 2.0 * 12.0 + sw.x) * sw.fade;
+
 			var left,right,bottom,top;
 			var rBL,rBR,rTL,rTR;
 			(function(){
@@ -1286,7 +1300,9 @@ Main.prototype.draw = function() {
 				}
 			}
 			//border:
-			col = 0xffffffff;
+			col = 0xffffff;
+			alpha = ((pulse * 0.5 + 0.7) * 255.9) | 0;
+			col |= alpha << 24;
 			if (true) {
 				for (var i = 0; i < corner.length; ++i) {
 					var x = left + rBL - rBL * corner[i].x;
@@ -1493,6 +1509,7 @@ Main.prototype.draw = function() {
 	//---------------------------------------------
 	//draw for debug purposes:
 	(function debugDraw(){
+	if (!Editing) return;
 
 	var verts2 = [];
 	var colors = [];
@@ -1636,7 +1653,7 @@ Main.prototype.draw = function() {
 			}, a == 32);
 		}
 	}
-
+/*
 	//Player (debug):
 	(function(){
 		var player = this.player;
@@ -1646,7 +1663,7 @@ Main.prototype.draw = function() {
 			drawCapsule(c);
 		});
 	}).call(this);
-
+*/
 
 /*
 	(function testLevelCollision() {
@@ -1725,7 +1742,7 @@ Main.prototype.draw = function() {
 	gl.deleteBuffer(vertsBuffer);
 	gl.deleteBuffer(colorsBuffer);
 
-	}); //.call(this); //end debugDraw
+	}).call(this); //end debugDraw
 };
 
 exports = Main;
