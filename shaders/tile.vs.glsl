@@ -21,9 +21,9 @@ void main() {
 		length(uTransition.xy - posFromTo.xy),
 		length(uTransition.xy - posFromTo.zw)
 		);
-	float len = length(posFromTo.xy - posFromTo.zw) + 1.0;
+	float len = length(posFromTo.xy - posFromTo.zw);
 
-	float t = clamp((dis * uTransition.z + uTransition.w) / len, 0.0, 1.0);
+	float t = clamp((dis * uTransition.z + uTransition.w) / (len + 0.5), 0.0, 1.0);
 
 	float smooth_t = t * t * (3.0 - 2.0 * t);
 
@@ -31,10 +31,9 @@ void main() {
 	vec2 xd = vec2(cos(rot.x), sin(rot.x));
 	vec2 yd = vec2(-xd.y, xd.x);
 
-	vec2 pos = vec2(
-		mix(posFromTo.x, posFromTo.z, smooth_t),
-		mix(posFromTo.y, posFromTo.w, t) + (0.25 - (t - 0.5) * (t - 0.5)) * 0.5 * (len - 1.0)
-		);
+	vec2 pos = mix(posFromTo.xy, posFromTo.zw, smooth_t);
+	pos.y += (0.25 - (t - 0.5) * (t - 0.5)) * 0.5 * len;
+
 	pos += xd * aData.x + yd * aData.y;
 
 	if (t < 0.5) {

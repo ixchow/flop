@@ -359,6 +359,8 @@ Main.prototype.pushPosRot = function(nextColor) {
 	var rot = this.rot;
 	var col = this.col;
 
+	var color = (nextColor + 0.5) / (Colors.length / 2) * 255.9;
+
 	var st = [
 		{x:1.0 - Sqrt2_2, y:1.0 - Sqrt2_2, r:0.0},
 		{x:Sqrt2_2, y:1.0 - Sqrt2_2, r:0.5 * Math.PI},
@@ -386,7 +388,7 @@ Main.prototype.pushPosRot = function(nextColor) {
 			rot[4*t+3] = ti;
 			if (this.triMoved[t]) {
 				col[4*t+2] = (r() * 255.9) | 0;
-				col[4*t+3] = (nextColor * 255) / (Colors.length / 2);
+				col[4*t+3] = color;
 				this.triMoved[t] = false;
 			}
 		}, this);
@@ -514,7 +516,7 @@ Main.prototype.startTransition = function() {
 				if (idx in this.switches) {
 					this.switches[idx].current = true;
 				} else {
-					this.nextColor = (this.nextColor + 2) % Colors.length;
+					this.nextColor = (this.nextColor + 1) % (Colors.length / 2);
 					this.switches[idx] = {
 						x:x+0.5,
 						y:y+0.5,
@@ -1252,7 +1254,7 @@ Main.prototype.draw = function() {
 
 			})();
 
-			var col = Colors[sw.color];
+			var col = Colors[sw.color*2];
 			var alpha = (255.9 * (amt * amt)) | 0;
 			col |= alpha << 24;
 
@@ -1284,7 +1286,7 @@ Main.prototype.draw = function() {
 				}
 			}
 			//border:
-			col = 0x80000000;
+			col = 0xff000000;
 			if (true) {
 				for (var i = 0; i < corner.length; ++i) {
 					var x = left + rBL - rBL * corner[i].x;
