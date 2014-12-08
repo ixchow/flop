@@ -601,7 +601,7 @@ Main.prototype.mouse = function(x, y, isDown) {
 };
 
 Main.prototype.key = function(id, isDown) {
-	console.log(id);
+	//console.log(id);
 	if (id === 'Left') {
 		this.player.goLeft = isDown;
 	} else if (id === 'Right') {
