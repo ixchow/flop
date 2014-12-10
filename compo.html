@@ -719,8 +719,12 @@ exports.init = function(onstart) {
 	canvas.onmousedown = engine.mouse.down;
 	canvas.onmouseup = engine.mouse.up;
 
-	window.addEventListener('keydown', engine.key.down);
-	window.addEventListener('keyup', engine.key.up);
+	window.addEventListener('keydown', function(e) {
+		CurrentScene && CurrentScene.key && CurrentScene.key(e.keyIdentifier, true);
+	});
+	window.addEventListener('keyup', function(e) {
+		CurrentScene && CurrentScene.key && CurrentScene.key(e.keyIdentifier, false);
+	});
 
 	//based on:
 	// https://developer.mozilla.org/en-US/docs/WebGL/Getting_started_with_WebGL
@@ -859,35 +863,6 @@ exports.init = function(onstart) {
 	//---------------------------------------------------
 
 	console.log("LDFw");
-};
-
-return exports;
-})({});
-engine.key = (function(exports) {
-function send(e, isDown) {
-	var id;
-	if ('code' in e) {
-		id = e.code;
-	} else if ('key' in e) {
-		id = e.key;
-	} else {
-		id = e.keyIdentifier;
-	}
-	engine.CurrentScene && engine.CurrentScene.key && engine.CurrentScene.key(id, isDown);
-}
-
-
-exports = {
-	down: function(e) {
-		send(e, true);
-		e.preventDefault();
-		return false;
-	},
-	up: function(e) {
-		send(e, false);
-		e.preventDefault();
-		return false;
-	}
 };
 
 return exports;
@@ -2794,6 +2769,7 @@ a {
 </style>
 </head>
 <body onload="engine.core.init(function() { engine.CurrentScene = new game.Main() });">
+<p style="background:#fdd;color:#000">This is the game exactly as it was at the Ludum Dare deadline. There is also a <a href="fixed.html">fixed version</a> that makes the arrow keys work on Firefox, but otherwise does not change the game.</p>
 <div id="game">
 	<canvas id="canvas"></canvas>
 </div>
