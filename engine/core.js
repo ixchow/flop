@@ -47,12 +47,8 @@ exports.init = function(onstart) {
 	canvas.onmousedown = engine.mouse.down;
 	canvas.onmouseup = engine.mouse.up;
 
-	window.addEventListener('keydown', function(e) {
-		CurrentScene && CurrentScene.key && CurrentScene.key(e.keyIdentifier, true);
-	});
-	window.addEventListener('keyup', function(e) {
-		CurrentScene && CurrentScene.key && CurrentScene.key(e.keyIdentifier, false);
-	});
+	window.addEventListener('keydown', engine.key.down);
+	window.addEventListener('keyup', engine.key.up);
 
 	//based on:
 	// https://developer.mozilla.org/en-US/docs/WebGL/Getting_started_with_WebGL
